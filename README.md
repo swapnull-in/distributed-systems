@@ -41,6 +41,11 @@ then watch the fix hold.
 | `npm run phase6` | **Retry storm** — a transient dip becomes a *metastable* outage; budget + jitter + breaker | fault tolerance |
 | `npm run phase7` | **CRDTs vs LWW** — LWW silently drops a write; OR-Set / PN-Counter converge | conflict resolution |
 | `npm run phase8` | **Clocks** — wall-clock skew inverts causality; Lamport + vector clocks fix it | clocks/ordering |
+| `npm run phase9`  | **Session guarantees** — read-your-writes & monotonic reads via a per-session LSN token | consistency model |
+| `npm run phase10` | **Outbox** — the dual-write bug, transactional outbox, idempotency (effectively-once) | distributed txns |
+| `npm run phase11` | **HLC** — a hybrid logical clock: causal order + near-real timestamps, constant size | clocks/ordering |
+| `npm run phase12` | **Quorum** — R+W>N overlap and read-repair; when R+W≤N reads stale | consistency / CAP |
+| `npm run phase13` | **Bulkheads** — bulkheads & shuffle sharding shrink the blast radius | fault tolerance |
 | `npm run capstone` | **Multi-region & static stability** — the fiber-cut drill with the capacity math | multi-region (L6) |
 
 Start by reading `src/phase1/write-skew.ts` and `src/phase3/raft.ts` — the whole
@@ -110,6 +115,11 @@ src/
   phase6/  retry storm + metastable failure + the three fixes
   phase7/  CRDTs (OR-Set, PN-Counter) vs LWW data loss
   phase8/  clocks — wall-clock skew, Lamport, vector
+  phase9/  session guarantees — read-your-writes, monotonic reads
+  phase10/ dual-write bug, transactional outbox, idempotency
+  phase11/ hybrid logical clock (HLC)
+  phase12/ quorum reads — R+W>N + read-repair
+  phase13/ bulkheads & shuffle sharding (blast radius)
   capstone/ multi-region static-stability fiber-cut drill
 web/
   index.html  ·  serve.mjs   (the interactive Failure Lab — npm run web)

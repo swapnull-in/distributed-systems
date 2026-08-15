@@ -274,6 +274,61 @@
       </div></div>
     </section>
 
+    <!-- 9 · SESSION GUARANTEES -->
+    <section class="phase" data-tab="9 · Session Guarantees">
+      <h2>Session guarantees — read-your-writes</h2>
+      <p class="lede">Under async replication you can write to the primary and then read a lagging replica that hasn't
+        caught up — "I just posted it, where is it?". A per-session <strong>LSN token</strong> fixes ~90% of these
+        without paying for full linearizability.</p>
+      <div class="card"><div class="lab">
+        <div class="controls">
+          <label class="toggle"><input type="checkbox" id="sg-ryw" /> Read-your-writes (route by LSN token)</label>
+          <button class="act" id="sg-write">✎ Post a comment (write → primary)</button>
+          <button class="act" id="sg-read">👁 Read my feed</button>
+          <button class="ghost" id="sg-catchup">⟳ Replica catches up</button>
+          <button class="ghost" id="sg-reset">↺ Reset</button>
+          <div class="verdict warn" id="sg-verdict"><span class="dot"></span><span id="sg-vtext">Write, then read — with the toggle off, then on.</span></div>
+        </div>
+        <div class="stage">
+          <div class="sidebox">
+            <div class="sidecard"><h4>Primary</h4><div id="sg-primary">LSN 0 · feed: []</div></div>
+            <div class="sidecard"><h4>Lagging replica</h4><div id="sg-replica">LSN 0 · feed: []</div></div>
+          </div>
+          <div class="big" id="sg-see" style="font-size:20px">—<small>what you see</small></div>
+          <p class="proof"><b>The proof:</b> naive, your read hits the lagging replica and your own write is missing until
+            it replicates. Read-your-writes carries the write's LSN as a session token and routes the read only to a node
+            caught up past it — cheap, sticky, per-session. (The other guarantees: monotonic reads, monotonic writes,
+            writes-follow-reads.)</p>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- 12 · QUORUM -->
+    <section class="phase" data-tab="12 · Quorum">
+      <h2>Quorum reads — R + W &gt; N and read-repair</h2>
+      <p class="lede">Leaderless replication: write to W of N, read from R. If <strong>R + W &gt; N</strong> the read and
+        write sets must overlap, so a read always sees the latest write; a stale replica is healed by
+        <strong>read-repair</strong> on the read path.</p>
+      <div class="card"><div class="lab">
+        <div class="controls">
+          <div><div class="slabel"><span>W · write replicas</span><b id="qr-wv">2</b></div><input type="range" id="qr-w" min="1" max="3" value="2" /></div>
+          <div><div class="slabel"><span>R · read replicas</span><b id="qr-rv">2</b></div><input type="range" id="qr-r" min="1" max="3" value="2" /></div>
+          <div class="chip good" id="qr-badge">R+W = 4 &gt; N=3 ✓ overlap</div>
+          <button class="act" id="qr-write">✎ Write v2 to W replicas</button>
+          <button class="act" id="qr-read">👁 Quorum read (R replicas)</button>
+          <button class="ghost" id="qr-reset">↺ Reset (all v1)</button>
+          <div class="verdict warn" id="qr-verdict"><span class="dot"></span><span id="qr-vtext">Write v2, then read — try R+W&gt;N vs R+W≤N.</span></div>
+        </div>
+        <div class="stage">
+          <div class="ring" id="qr-ring"></div>
+          <p class="proof"><b>The proof:</b> writes land on the first W replicas, reads on the last R. Those sets overlap
+            exactly when <code>W + R &gt; N</code> (pigeonhole) — so a quorum read always includes a replica with the
+            latest version, and read-repair writes it back to the stale ones. Set R+W ≤ N and the read can miss the write:
+            fast, but stale. Sloppy quorum + hinted handoff trade this for availability under partition.</p>
+        </div>
+      </div></div>
+    </section>
+
     <!-- 3 · SPLIT-BRAIN / RAFT -->
     <section class="phase" data-tab="3 · Split-brain">
       <h2>Raft — split-brain made impossible</h2>
@@ -350,6 +405,34 @@
       </div></div>
     </section>
 
+    <!-- 10 · OUTBOX -->
+    <section class="phase" data-tab="10 · Outbox">
+      <h2>Dual-write vs the transactional outbox</h2>
+      <p class="lede">A service must change its DB <em>and</em> publish an event. Doing them as two separate steps means a
+        crash between can leave them disagreeing. The <strong>outbox</strong> writes the event into the DB in the
+        <em>same transaction</em>; a relay publishes it at-least-once; consumers dedupe by idempotency key.</p>
+      <div class="card"><div class="lab">
+        <div class="controls">
+          <div><label class="fld">approach</label><div class="seg"><button class="ghost sel" id="ob-dual">dual-write</button><button class="ghost" id="ob-outbox">outbox</button></div></div>
+          <button class="act" id="ob-run">▶ Place order — crash mid-way</button>
+          <button class="ghost" id="ob-relay" style="display:none">⟳ Restart · relay replays outbox</button>
+          <button class="ghost" id="ob-dup" style="display:none">⟳ Relay redelivers (duplicate)</button>
+          <button class="ghost" id="ob-reset">↺ Reset</button>
+          <div class="verdict warn" id="ob-verdict"><span class="dot"></span><span id="ob-vtext">Run each approach with a crash and compare.</span></div>
+        </div>
+        <div class="stage">
+          <div class="sidebox">
+            <div class="sidecard"><h4>Database</h4><div id="ob-db">order: (none)</div><div id="ob-obx" style="margin-top:5px">outbox: (none)</div></div>
+            <div class="sidecard"><h4>Broker / consumer</h4><div id="ob-broker">0 event(s) published</div><div id="ob-cons" style="margin-top:5px">0 shipment(s)</div></div>
+          </div>
+          <p class="proof"><b>The proof:</b> dual-write commits the DB then 💥 crashes before publishing → order PAID but no
+            event, permanently inconsistent. The outbox commits the state change and the event row atomically, so a crash
+            just delays delivery — the relay replays the outbox (at-least-once). A duplicate delivery is deduped by
+            idempotency key → effectively-once. There is no exactly-once on the wire.</p>
+        </div>
+      </div></div>
+    </section>
+
     <!-- 6 · RETRY STORM -->
     <section class="phase" data-tab="6 · Retry Storm">
       <h2>Retry storm → metastable failure</h2>
@@ -368,6 +451,30 @@
           <p class="proof"><b>The proof:</b> naive retries turn a 3-round dip into a <b>permanent outage</b> — retries
             become the load, so even after capacity returns the useful work stays near zero. A retry budget caps the
             amplification and the breaker sheds load so the dependency can recover.</p>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- 13 · BULKHEADS -->
+    <section class="phase" data-tab="13 · Bulkheads">
+      <h2>Bulkheads &amp; shuffle sharding — blast radius</h2>
+      <p class="lede">One poisoned tenant that ties up whatever workers it lands on shouldn't take everyone down.
+        <strong>Bulkheads</strong> give each tenant its own pool; <strong>shuffle sharding</strong> gives each a random
+        small subset of workers, so any two tenants collide combinatorially rarely.</p>
+      <div class="card"><div class="lab">
+        <div class="controls">
+          <div><label class="fld">isolation</label><div class="seg"><button class="ghost sel" id="bh-shared">shared</button><button class="ghost" id="bh-bulk">bulkhead</button><button class="ghost" id="bh-shuffle">shuffle</button></div></div>
+          <button class="act" id="bh-run">☠ Inject one poison tenant</button>
+          <div class="verdict warn" id="bh-verdict"><span class="dot"></span><span id="bh-vtext">Poison one tenant under each scheme and watch the blast radius.</span></div>
+        </div>
+        <div class="stage">
+          <div class="big" id="bh-blast">—<small>tenants affected (blast radius)</small></div>
+          <div><label class="fld">100 tenants · n=16 workers, k=2 per tenant</label><div id="bh-grid" style="display:grid; grid-template-columns:repeat(20,1fr); gap:3px; margin-top:6px"></div></div>
+          <p class="proof"><b>The proof:</b> a shared pool means one poison tenant saturates every worker → 100% blast
+            radius. Bulkheads dedicate a pool per tenant → only that tenant suffers (rigid, wastes capacity). Shuffle
+            sharding gives each tenant a random <em>k</em>-of-<em>n</em> shard; a victim is only sunk if its whole shard
+            sits inside the poison's — probability <code>1 / C(n,k)</code> ≈ 0.8% here — so the blast radius drops to a few
+            percent without a full pool each. This is the AWS Route 53 / cell-based trick.</p>
         </div>
       </div></div>
     </section>
@@ -419,8 +526,24 @@
       </div></div>
     </section>
 
-    <!-- 9 · STATIC STABILITY -->
-    <section class="phase" data-tab="9 · Static Stability">
+    <!-- 11 · HLC -->
+    <section class="phase" data-tab="11 · HLC">
+      <h2>Hybrid Logical Clock — the pragmatic default</h2>
+      <p class="lede">HLC wraps Lamport's causal guarantee around physical time: a timestamp <code>(pt, l)</code> where
+        <code>pt</code> tracks the wall clock and a tiny counter <code>l</code> breaks ties. You get "if a→b then
+        ts(a) &lt; ts(b)" <em>and</em> near-real timestamps, in constant size, with no atomic clocks.</p>
+      <div class="card"><div class="lab">
+        <div class="controls">
+          <button class="act" id="hlc-run">▶ A writes, sends to B (B's clock is 15ms behind)</button>
+          <button class="ghost" id="hlc-tie">▶ Three events at the same instant</button>
+          <div class="verdict warn" id="hlc-verdict"><span class="dot"></span><span id="hlc-vtext">Run the skewed exchange and compare clock types.</span></div>
+        </div>
+        <div class="stage" id="hlc-stage"></div>
+      </div></div>
+    </section>
+
+    <!-- STATIC STABILITY (capstone) -->
+    <section class="phase" data-tab="Static Stability">
       <h2>Multi-region — the fiber-cut drill</h2>
       <p class="lede">Three regions at the same steady utilization. Cut one — the survivors must absorb its load with
         capacity that <em>already exists</em> (autoscaling can't save you: cold-start stampede on the cloud's worst day).</p>
@@ -454,12 +577,12 @@ const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const closeNav = () => appEl.classList.remove('nav-open');
 const TIER_OF = {
   'overview':'Overview',
-  '1-write-skew':'Consistency', '2-cap-pacelc':'Consistency',
+  '1-write-skew':'Consistency', '2-cap-pacelc':'Consistency', '9-session-guarantees':'Consistency', '12-quorum':'Consistency',
   '3-split-brain':'Consensus & locks', '4-fencing':'Consensus & locks',
-  '5-2pc-vs-saga':'Transactions',
-  '6-retry-storm':'Fault tolerance',
-  '7-crdt-vs-lww':'Conflict & clocks', '8-clocks':'Conflict & clocks',
-  '9-static-stability':'Multi-region',
+  '5-2pc-vs-saga':'Transactions', '10-outbox':'Transactions',
+  '6-retry-storm':'Fault tolerance', '13-bulkheads':'Fault tolerance',
+  '7-crdt-vs-lww':'Conflict & clocks', '8-clocks':'Conflict & clocks', '11-hlc':'Conflict & clocks',
+  'static-stability':'Multi-region',
 };
 navEl.setAttribute('role','tablist'); navEl.setAttribute('aria-orientation','vertical');
 let curTier = null, groupEl = null;
@@ -721,6 +844,87 @@ function verdict(sel, tsel, kind, text){ const v=$(sel); v.className='verdict '+
     else verdict('#region-verdict','#region-vtext','bad',`Survivor peak ${peak}% — <b>over capacity</b>. Survivors overload, requests shed. You cut the headroom you needed; RTO broken.`); };
   $('#region-reset').onclick=()=>{ deadIdx=-1; draw(); verdict('#region-verdict','#region-vtext','ok','All three healthy.'); };
   draw();
+})();
+
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+
+/* ══ 9 · SESSION GUARANTEES ══ */
+(function(){
+  let primLSN, primFeed, repLSN, repFeed, token;
+  function reset(){ primLSN=0; primFeed=[]; repLSN=0; repFeed=[]; token=0; paint('Write, then read — with the toggle off, then on.','warn','—'); }
+  function paint(msg,kind,see){ $('#sg-primary').innerHTML=`LSN ${primLSN} · feed: [${primFeed.join(', ')}]`; $('#sg-replica').innerHTML=`LSN ${repLSN} · feed: [${repFeed.join(', ')}]`; $('#sg-see').innerHTML=`${see}<small>what you see</small>`; verdict('#sg-verdict','#sg-vtext',kind,msg); }
+  $('#sg-write').onclick=()=>{ primLSN++; primFeed.push('c'+primLSN); token=primLSN; paint(`Posted <b>c${primLSN}</b> to the primary (LSN ${primLSN}). The replica still lags at LSN ${repLSN}.`,'warn','—'); };
+  $('#sg-read').onclick=()=>{ if($('#sg-ryw').checked){ const onPrimary=repLSN<token; const f=onPrimary?primFeed:repFeed;
+      paint(`Read-your-writes: token = LSN ${token}; replica@${repLSN} ${onPrimary?'is behind → routed to the <b>primary</b>':'is caught up → served by the <b>replica</b>'} → you see your write.`,'ok',`[${f.join(', ')}]`); }
+    else paint(`Naive read from the lagging replica@${repLSN} → you do <b>NOT</b> see c${token} (your own write vanished until it replicates).`,'bad',`[${repFeed.join(', ')}]`); };
+  $('#sg-catchup').onclick=()=>{ repLSN=primLSN; repFeed=[...primFeed]; paint(`Replica replicated up to LSN ${repLSN} — now it has everything.`,'ok',`[${repFeed.join(', ')}]`); };
+  $('#sg-reset').onclick=reset; reset();
+})();
+
+/* ══ 12 · QUORUM ══ */
+(function(){
+  const N=3; let reps, W, R; const ring=$('#qr-ring');
+  function badge(){ const s=W+R; $('#qr-badge').innerHTML=`R+W = ${s} ${s>N?'&gt;':'≤'} N=3 ${s>N?'✓ overlap':'✗ may miss'}`; $('#qr-badge').className='chip '+(s>N?'good':'bad'); }
+  function draw(hl){ ring.innerHTML=''; reps.forEach((r,i)=>{ const n=el('div','node'+(hl&&hl.includes(i)?' A':'')); n.innerHTML=`<span class="side">replica</span><span class="id">${i}</span><span class="side">v${r.v}</span>`; ring.appendChild(n); }); }
+  function reset(){ reps=[{v:1},{v:1},{v:1}]; W=+$('#qr-w').value; R=+$('#qr-r').value; badge(); draw(); verdict('#qr-verdict','#qr-vtext','warn','Write v2, then read — try R+W&gt;N vs R+W≤N.'); }
+  $('#qr-w').oninput=e=>{ W=+e.target.value; $('#qr-wv').textContent=W; badge(); };
+  $('#qr-r').oninput=e=>{ R=+e.target.value; $('#qr-rv').textContent=R; badge(); };
+  $('#qr-write').onclick=()=>{ const set=[...Array(W).keys()]; set.forEach(i=>reps[i].v=2); draw(set); verdict('#qr-verdict','#qr-vtext','warn',`Wrote v2 to ${W} replica(s): {${set.join(',')}}. The other ${N-W} still hold v1.`); };
+  $('#qr-read').onclick=()=>{ const readSet=[]; for(let i=N-1;i>=N-R;i--) readSet.push(i); const newest=Math.max(...readSet.map(i=>reps[i].v));
+    let repaired=[]; if(newest===2) readSet.forEach(i=>{ if(reps[i].v<2){ reps[i].v=2; repaired.push(i); } }); draw(readSet);
+    if(newest===2) verdict('#qr-verdict','#qr-vtext','ok',`Read replicas {${readSet.join(',')}} → newest = <b>v2</b>${(W+R)>N?' — R+W&gt;N guarantees the write set {0…} and read set {…N} overlap':''}.${repaired.length?` Read-repair healed replica ${repaired.join(',')} → all v2.`:''}`);
+    else verdict('#qr-verdict','#qr-vtext','bad',`Read replicas {${readSet.join(',')}} → newest = <b>v1</b> (STALE). R+W=${W+R} ≤ 3 → the write set and read set didn’t overlap. Fast, but you can read stale.`); };
+  $('#qr-reset').onclick=reset; reset();
+})();
+
+/* ══ 10 · OUTBOX ══ */
+(function(){
+  let mode='dual', db, outbox, broker, ship;
+  function setM(m){ mode=m; $('#ob-dual').classList.toggle('sel',m==='dual'); $('#ob-outbox').classList.toggle('sel',m==='outbox'); reset(); }
+  $('#ob-dual').onclick=()=>setM('dual'); $('#ob-outbox').onclick=()=>setM('outbox');
+  function reset(){ db='(none)'; outbox='(none)'; broker=0; ship=0; paint(); $('#ob-relay').style.display='none'; $('#ob-dup').style.display='none'; verdict('#ob-verdict','#ob-vtext','warn','Run each approach with a crash and compare.'); }
+  function paint(){ $('#ob-db').textContent='order: '+db; $('#ob-obx').textContent='outbox: '+outbox; $('#ob-broker').textContent=broker+' event(s) published'; $('#ob-cons').textContent=ship+' shipment(s)'; }
+  $('#ob-run').onclick=()=>{ if(mode==='dual'){ db='order#1 PAID'; outbox='(n/a)'; broker=0; ship=0; paint();
+      verdict('#ob-verdict','#ob-vtext','bad','Dual-write: committed the DB, then 💥 crashed before publishing. Order is PAID but <b>no event was published</b> → shipping never hears about it. Permanently inconsistent.'); }
+    else { db='order#1 PAID'; outbox='event#1 (unsent)'; broker=0; ship=0; paint(); $('#ob-relay').style.display='block';
+      verdict('#ob-verdict','#ob-vtext','warn','Outbox: the order AND the event row were committed in <b>one transaction</b>, then 💥 crashed before the relay ran — the event is safe in the outbox. Restart the relay →'); } };
+  $('#ob-relay').onclick=()=>{ broker=1; ship=1; outbox='event#1 (sent ✓)'; paint(); $('#ob-dup').style.display='block';
+    verdict('#ob-verdict','#ob-vtext','ok','Relay replayed the outbox → event published (at-least-once), shipment created. State and event now agree. Test a duplicate →'); };
+  $('#ob-dup').onclick=()=>{ broker=2; paint(); verdict('#ob-verdict','#ob-vtext','ok','Relay redelivered a <b>duplicate</b> (crashed after publish, before marking sent). The consumer deduped by idempotency key → broker shows 2 events but <b>still 1 shipment</b>. Effectively-once.'); };
+  $('#ob-reset').onclick=reset; setM('dual');
+})();
+
+/* ══ 13 · BULKHEADS ══ */
+(function(){
+  const N=16, K=2, T=100; let mode='shared', affected=null;
+  function shardOf(t){ const rnd=mulberry32(1000+t); const s=new Set(); while(s.size<K) s.add(Math.floor(rnd()*N)); return s; }
+  function setM(m){ mode=m; ['shared','bulk','shuffle'].forEach(x=>$('#bh-'+x).classList.toggle('sel',x===m)); affected=null; render(); }
+  $('#bh-shared').onclick=()=>setM('shared'); $('#bh-bulk').onclick=()=>setM('bulk'); $('#bh-shuffle').onclick=()=>setM('shuffle');
+  function render(msg){ const grid=$('#bh-grid'); grid.innerHTML='';
+    for(let t=0;t<T;t++){ const d=el('div'); const bad=affected?affected.has(t):false; d.style.cssText=`aspect-ratio:1; border-radius:3px; background:${bad?'var(--bad)':'var(--good)'}; opacity:${affected?1:.28}`; grid.appendChild(d); }
+    $('#bh-blast').innerHTML=affected?`${affected.size}%<small>tenants affected (blast radius)</small>`:'—<small>tenants affected (blast radius)</small>';
+    if(affected&&msg){ const pct=affected.size; verdict('#bh-verdict','#bh-vtext',pct>50?'bad':pct>5?'warn':'ok',msg); } }
+  $('#bh-run').onclick=()=>{ affected=new Set();
+    if(mode==='shared'){ for(let t=0;t<T;t++) affected.add(t); render('Shared pool: the poison tenant saturates every worker → <b>100% blast radius</b>. One bad tenant took everyone down.'); }
+    else if(mode==='bulk'){ affected.add(0); render('Bulkheads: the poison tenant exhausts only its own dedicated pool → <b>1 tenant</b>. Cost: rigid capacity, no statistical multiplexing.'); }
+    else { const ps=shardOf(0); for(let t=0;t<T;t++){ const s=shardOf(t); let inp=0; for(const w of s) if(ps.has(w)) inp++; if(inp>=K) affected.add(t); }
+      render(`Shuffle sharding: a victim is only sunk if its whole ${K}-worker shard sits inside the poison’s (prob ≈ 1/C(16,2) = 0.8%) → only <b>${affected.size} of ${T}</b> affected. Isolation without a full pool each — the cell-based / Route 53 trick.`); } };
+  setM('shared');
+})();
+
+/* ══ 11 · HLC ══ */
+(function(){
+  const rows=list=>{ const st=$('#hlc-stage'); st.innerHTML=''; list.forEach(([t,d])=>{ const r=el('div','clockrow'); r.innerHTML=`<div class="ct">${t}</div><div class="cd">${d}</div>`; st.appendChild(r); }); };
+  $('#hlc-run').onclick=()=>{ rows([
+      ['Wall clock', `A sends @<b>1000</b> · B replies @<b>985</b> (behind) — LWW keeps the higher stamp → <span class="chip bad">A’s send</span> ❌ the newer reply looks older`],
+      ['Lamport', `send → 1, receive → 2 → <span class="chip good">send &lt; receive</span> ✓ order right, but the bare integer says nothing about real time`],
+      ['HLC', `send <b>(pt=1000, l=0)</b> · receive <b>(pt=1000, l=1)</b> → <span class="chip good">send &lt; receive</span> ✓ — receive pulled pt up to 1000, and it still reads ~real time`],
+    ]); verdict('#hlc-verdict','#hlc-vtext','ok','B’s clock is 15ms behind, but receive forces HLC.pt ≥ the sender’s, so send &lt; receive always holds — and pt=1000 still tracks the wall clock.'); };
+  $('#hlc-tie').onclick=()=>{ rows([
+      ['3 events @ wall 2000', `(pt=2000, l=<b>0</b>) → (pt=2000, l=<b>1</b>) → (pt=2000, l=<b>2</b>) — <code>l</code> ticks only to order events inside one instant`],
+      ['next @ wall 2003', `(pt=<b>2003</b>, l=<b>0</b>) — pt jumps to real time, <code>l</code> resets → stays small (constant size), never blows up like a Lamport counter`],
+    ]); verdict('#hlc-verdict','#hlc-vtext','ok','pt tracks physical time (human-readable, range-scannable); l is a tiny tie-breaker within one instant that resets. Constant size, no atomic clocks.'); };
+  $('#hlc-run').click();
 })();
 </script>
 </body>
