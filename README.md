@@ -46,6 +46,21 @@ then watch the fix hold.
 Start by reading `src/phase1/write-skew.ts` and `src/phase3/raft.ts` — the whole
 protocols in a few dozen commented lines each.
 
+## Interactive Failure Lab
+
+Every phase is also a live instrument in the browser — cut a Raft cluster and watch
+which side commits, kill a 2PC coordinator, drag the utilization until a region loss
+flips from non-event to outage, merge two replicas under LWW vs a CRDT, and more.
+
+```bash
+npm run web        # serves web/index.html at http://localhost:8080 (no deps)
+```
+
+It's one self-contained static page (with self-hosted fonts) grouped by the seven
+levers, keyboard-navigable and deep-linkable. To host it on **Cloudflare Pages**:
+connect this repo in the dashboard with build output `web` (auto-deploys on push),
+or run `npx wrangler login` then `npm run deploy`.
+
 ## What each phase proves (the money quotes)
 
 - **Phase 1** — two on-call doctors both go off-shift under Snapshot Isolation
@@ -96,6 +111,8 @@ src/
   phase7/  CRDTs (OR-Set, PN-Counter) vs LWW data loss
   phase8/  clocks — wall-clock skew, Lamport, vector
   capstone/ multi-region static-stability fiber-cut drill
+web/
+  index.html  ·  serve.mjs   (the interactive Failure Lab — npm run web)
 ```
 
 ## License

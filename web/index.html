@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Distributed Systems — Failure Lab</title>
+<meta name="description" content="An interactive lab for the distributed-systems failure modes: write skew, CAP, Raft split-brain, fencing, 2PC vs Saga, retry storms, CRDTs, clocks, and multi-region static stability." />
+<meta name="theme-color" content="#faf9f6" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#0d0d13" media="(prefers-color-scheme: dark)" />
+<link rel="preload" href="fonts/space-grotesk-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="fonts/ibm-plex-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="fonts/ibm-plex-mono-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
+<style>
+  @font-face { font-family:"Space Grotesk"; font-style:normal; font-weight:500; font-display:swap; src:url(fonts/space-grotesk-latin-500-normal.woff2) format("woff2"); }
+  @font-face { font-family:"Space Grotesk"; font-style:normal; font-weight:600; font-display:swap; src:url(fonts/space-grotesk-latin-600-normal.woff2) format("woff2"); }
+  @font-face { font-family:"Space Grotesk"; font-style:normal; font-weight:700; font-display:swap; src:url(fonts/space-grotesk-latin-700-normal.woff2) format("woff2"); }
+  @font-face { font-family:"IBM Plex Sans"; font-style:normal; font-weight:400; font-display:swap; src:url(fonts/ibm-plex-sans-latin-400-normal.woff2) format("woff2"); }
+  @font-face { font-family:"IBM Plex Sans"; font-style:normal; font-weight:500; font-display:swap; src:url(fonts/ibm-plex-sans-latin-500-normal.woff2) format("woff2"); }
+  @font-face { font-family:"IBM Plex Sans"; font-style:normal; font-weight:600; font-display:swap; src:url(fonts/ibm-plex-sans-latin-600-normal.woff2) format("woff2"); }
+  @font-face { font-family:"IBM Plex Mono"; font-style:normal; font-weight:400; font-display:swap; src:url(fonts/ibm-plex-mono-latin-400-normal.woff2) format("woff2"); }
+  @font-face { font-family:"IBM Plex Mono"; font-style:normal; font-weight:500; font-display:swap; src:url(fonts/ibm-plex-mono-latin-500-normal.woff2) format("woff2"); }
+  :root {
+    --bg:#faf9f6; --panel:#ffffff; --panel-2:#f4f2ec; --sidebar-bg:#f4f2ec; --hover:#ebe9e1;
+    --ink:#191a20; --muted:#6c6d78; --line:#e7e3da;
+    --accent:#4b3bff; --accent-soft:#ecebff; --amber:#b96608; --amber-soft:#fbeed6;
+    --good:#0f9d6a; --good-soft:#e0f2ea; --warn:#b96608; --warn-soft:#fbeed6; --bad:#dd4650; --bad-soft:#fbe4e6; --info:#2f6db0;
+    --code-bg:#14131f; --code-ink:#d7d4e6;
+    --shadow:0 1px 2px rgba(24,20,40,.04), 0 10px 30px -16px rgba(24,20,40,.18);
+    --mono:"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans:"IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --display:"Space Grotesk", var(--sans);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:#0d0d13; --panel:#16161e; --panel-2:#1d1d27; --sidebar-bg:#0a0a10; --hover:#20202c;
+      --ink:#ecebf2; --muted:#9698a6; --line:#282833;
+      --accent:#907fff; --accent-soft:#211f36; --amber:#f0b45a; --amber-soft:#2a2216;
+      --good:#40d98c; --good-soft:#12261e; --warn:#f0b45a; --warn-soft:#2a2216; --bad:#ff6b72; --bad-soft:#2a141a; --info:#6ea8e0;
+      --code-bg:#08080d; --code-ink:#cfd0e0;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 14px 34px -18px rgba(0,0,0,.7);
+    }
+  }
+  * { box-sizing:border-box; }
+  html, body { margin:0; }
+  body { background:var(--bg); color:var(--ink); font-family:var(--sans); line-height:1.55; -webkit-font-smoothing:antialiased; }
+  .num, code, .mono { font-variant-numeric:tabular-nums; }
+  /* shell */
+  .app { display:flex; align-items:flex-start; min-height:100vh; }
+  .sidebar { position:sticky; top:0; height:100vh; width:270px; flex:none; z-index:40; display:flex; flex-direction:column; overflow-y:auto; padding:20px 14px 16px; background:var(--sidebar-bg); border-right:1px solid var(--line); }
+  .brand { display:flex; align-items:center; gap:11px; padding:4px 10px 16px; margin-bottom:6px; border-bottom:1px solid var(--line); }
+  .glyph { width:32px; height:32px; flex:none; border-radius:9px; background:var(--accent); display:grid; place-items:center; color:#fff; font-family:var(--mono); font-size:16px; box-shadow:0 5px 14px -5px color-mix(in srgb, var(--accent) 60%, transparent); }
+  .brand .wm { display:flex; flex-direction:column; line-height:1.25; }
+  .brand .wm b { font-family:var(--display); font-weight:600; font-size:14.5px; letter-spacing:-.01em; }
+  .brand .wm span { font-family:var(--mono); font-size:9.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); }
+  nav.nav { display:flex; flex-direction:column; }
+  .nav-group { margin-top:13px; }
+  .nav-group-label { font-family:var(--mono); font-size:9.5px; letter-spacing:.13em; text-transform:uppercase; color:var(--muted); padding:0 11px 6px; }
+  .nav-item { display:flex; align-items:center; gap:11px; width:100%; text-align:left; cursor:pointer; background:none; border:none; font-family:var(--sans); font-size:13.5px; color:var(--muted); padding:7px 11px; border-radius:8px; transition:.12s; line-height:1.3; }
+  .nav-item .n { font-family:var(--mono); font-size:11px; color:color-mix(in srgb, var(--muted) 75%, transparent); min-width:15px; text-align:right; }
+  .nav-item:hover { background:var(--hover); color:var(--ink); }
+  .nav-item.active { background:var(--accent-soft); color:var(--accent); font-weight:500; }
+  .nav-item.active .n { color:var(--accent); }
+  .side-foot { margin-top:auto; padding:15px 11px 2px; font-family:var(--mono); font-size:11px; line-height:1.7; color:var(--muted); }
+  .side-foot a { color:var(--muted); text-decoration:none; border-bottom:1px solid var(--line); }
+  .side-foot a:hover { color:var(--accent); border-color:var(--accent); }
+  .main { flex:1; min-width:0; padding:42px clamp(24px,4vw,60px) 100px; }
+  .main-inner { max-width:940px; margin:0 auto; }
+  .topbar, .backdrop { display:none; }
+  .hero-eyebrow { font-family:var(--mono); font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--accent); margin:0 0 14px; }
+  .hero h1 { font-family:var(--display); font-weight:600; font-size:clamp(31px,4.6vw,47px); margin:0 0 16px; letter-spacing:-.026em; line-height:1.03; max-width:16ch; }
+  .hero h1 em { font-style:normal; color:var(--accent); }
+  .hero p { color:var(--muted); margin:0; max-width:62ch; font-size:16.5px; line-height:1.6; }
+  .hero p strong { color:var(--ink); font-weight:600; }
+  .levers { display:grid; grid-template-columns:repeat(auto-fill, minmax(210px,1fr)); gap:12px; margin:30px 0 4px; }
+  .lever { background:var(--panel); border:1px solid var(--line); border-radius:13px; padding:15px 16px; box-shadow:var(--shadow); }
+  .lever b { font-family:var(--display); font-weight:600; font-size:14px; display:block; margin-bottom:4px; }
+  .lever span { font-size:12.5px; color:var(--muted); line-height:1.5; }
+  .overview-hint { font-size:14.5px; color:var(--muted); margin:24px 0 0; line-height:1.6; max-width:64ch; }
+  .overview-hint b { color:var(--ink); font-weight:600; }
+  section.phase { display:none; }
+  section.phase.active { display:block; animation:fade .22s ease; }
+  @keyframes fade { from { opacity:0; transform:translateY(5px); } to { opacity:1; } }
+  .phase h2 { font-family:var(--display); font-weight:600; font-size:25px; margin:0 0 6px; letter-spacing:-.02em; }
+  .phase .lede { color:var(--muted); margin:0 0 20px; max-width:76ch; font-size:15.5px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:20px 22px; margin-bottom:16px; box-shadow:var(--shadow); }
+  .lab { display:grid; grid-template-columns:270px 1fr; gap:22px; align-items:start; }
+  @media (max-width:720px){ .lab { grid-template-columns:1fr; } }
+  .controls { display:flex; flex-direction:column; gap:13px; }
+  .stage { min-width:0; display:flex; flex-direction:column; gap:14px; }
+  .ctl-h { font-family:var(--mono); font-size:11.5px; font-weight:500; text-transform:uppercase; letter-spacing:.09em; color:var(--muted); }
+  label.fld { display:block; font-family:var(--mono); font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); margin-bottom:6px; }
+  input[type=range] { width:100%; accent-color:var(--accent); height:4px; }
+  .slabel { display:flex; justify-content:space-between; align-items:baseline; font-family:var(--mono); font-size:12px; color:var(--muted); margin-bottom:4px; }
+  .slabel b { color:var(--ink); font-size:14px; }
+  button.act { font-family:var(--sans); font-size:13px; background:var(--accent); color:#fff; border:none; padding:10px 15px; border-radius:9px; cursor:pointer; font-weight:500; text-align:left; box-shadow:0 4px 12px -5px color-mix(in srgb, var(--accent) 60%, transparent); transition:.14s; }
+  button.act:hover { filter:brightness(1.06); }
+  button.act:disabled { opacity:.5; cursor:default; box-shadow:none; }
+  button.ghost { font-family:var(--sans); font-size:13px; background:var(--panel-2); color:var(--ink); border:1px solid var(--line); padding:9px 13px; border-radius:9px; cursor:pointer; text-align:left; }
+  button.ghost:hover { border-color:var(--accent); }
+  button.ghost.sel { border-color:var(--accent); color:var(--accent); background:var(--accent-soft); }
+  .seg { display:flex; gap:6px; }
+  .seg button { flex:1; }
+  .toggle { display:flex; align-items:center; gap:10px; font-size:13.5px; color:var(--ink); cursor:pointer; user-select:none; }
+  .toggle input { width:16px; height:16px; accent-color:var(--accent); }
+  .nav-item:focus-visible, input:focus-visible, button:focus-visible, a:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  /* verdict + proof */
+  .verdict { font-family:var(--mono); font-size:13px; border-radius:9px; padding:11px 13px; border:1px solid var(--line); display:flex; gap:10px; align-items:baseline; background:var(--panel-2); }
+  .verdict .dot { width:9px; height:9px; border-radius:50%; flex:none; translate:0 2px; background:var(--muted); }
+  .verdict.ok { background:var(--good-soft); border-color:color-mix(in srgb, var(--good) 40%, transparent); } .verdict.ok .dot { background:var(--good); }
+  .verdict.bad { background:var(--bad-soft); border-color:color-mix(in srgb, var(--bad) 40%, transparent); } .verdict.bad .dot { background:var(--bad); }
+  .verdict.warn { background:var(--warn-soft); border-color:color-mix(in srgb, var(--warn) 40%, transparent); } .verdict.warn .dot { background:var(--warn); }
+  .proof { font-size:13px; color:var(--muted); border-left:3px solid var(--accent); padding:8px 0 8px 13px; margin-top:2px; background:linear-gradient(90deg, var(--accent-soft), transparent 80%); border-radius:0 8px 8px 0; }
+  .proof b { color:var(--ink); }
+  code { font-family:var(--mono); background:var(--accent-soft); color:var(--accent); padding:1px 5px; border-radius:5px; font-size:.88em; }
+  .chip { display:inline-block; font-family:var(--mono); font-size:11px; padding:2px 8px; border-radius:999px; border:1px solid var(--line); }
+  .chip.good { color:var(--good); border-color:color-mix(in srgb, var(--good) 45%, transparent); background:var(--good-soft); }
+  .chip.bad { color:var(--bad); border-color:color-mix(in srgb, var(--bad) 45%, transparent); background:var(--bad-soft); }
+  .chip.warn { color:var(--warn); border-color:color-mix(in srgb, var(--warn) 45%, transparent); background:var(--warn-soft); }
+  .big { font-family:var(--mono); font-size:30px; font-variant-numeric:tabular-nums; }
+  .big small { font-size:11px; color:var(--muted); font-family:var(--mono); text-transform:uppercase; letter-spacing:.06em; display:block; }
+  /* nodes (raft, cap) */
+  .ring { display:flex; gap:12px; flex-wrap:wrap; }
+  .node { width:64px; height:64px; border-radius:50%; border:2px solid var(--line); background:var(--panel-2); display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; font-family:var(--mono); font-size:12px; position:relative; transition:.2s; }
+  .node .id { font-weight:600; font-size:15px; }
+  .node .side { font-size:9px; letter-spacing:.08em; color:var(--muted); }
+  .node.A { border-color:var(--info); }
+  .node.B { border-color:var(--warn); }
+  .node.leader { border-color:var(--good); background:var(--good-soft); }
+  .node.leader::after { content:"★"; position:absolute; top:-12px; color:var(--good); font-size:15px; }
+  .sidebox { display:flex; gap:12px; flex-wrap:wrap; }
+  .sidecard { flex:1 1 170px; border:1px solid var(--line); border-radius:9px; padding:11px 13px; font-family:var(--mono); font-size:12px; background:var(--panel-2); }
+  .sidecard h4 { margin:0 0 6px; font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--muted); font-weight:500; }
+  /* region bars */
+  .regions { display:flex; gap:18px; align-items:flex-end; height:190px; padding:6px 4px 0; position:relative; }
+  .region { flex:1; display:flex; flex-direction:column; align-items:center; gap:8px; height:100%; justify-content:flex-end; }
+  .bar { width:100%; border-radius:6px 6px 0 0; background:var(--good); transition:height .5s ease, background .3s; min-height:2px; }
+  .bar.dead { background:var(--line); opacity:.55; } .bar.over { background:var(--bad); }
+  .region .rname { font-family:var(--mono); font-size:11px; color:var(--muted); }
+  .region .rval { font-family:var(--mono); font-size:12px; font-variant-numeric:tabular-nums; }
+  .ceil { position:absolute; left:0; right:0; border-top:1px dashed var(--muted); opacity:.55; }
+  .ceil span { position:absolute; right:0; top:-15px; font-family:var(--mono); font-size:10px; color:var(--muted); }
+  /* retry chart */
+  .chart { display:flex; align-items:flex-end; gap:5px; height:170px; padding-top:18px; position:relative; border-bottom:1px solid var(--line); }
+  .col { flex:1; display:flex; flex-direction:column; justify-content:flex-end; align-items:center; gap:3px; height:100%; }
+  .gp { width:100%; background:var(--good); border-radius:3px 3px 0 0; transition:height .35s ease, background .3s; min-height:1px; }
+  .col .rn { font-family:var(--mono); font-size:9px; color:var(--muted); }
+  .legend { display:flex; gap:16px; font-family:var(--mono); font-size:11px; color:var(--muted); flex-wrap:wrap; }
+  .swatch { display:inline-block; width:10px; height:10px; border-radius:2px; translate:0 1px; margin-right:5px; }
+  /* carts */
+  .carts { display:flex; gap:14px; flex-wrap:wrap; align-items:stretch; }
+  .cart { flex:1 1 150px; border:1px solid var(--line); border-radius:10px; padding:12px; }
+  .cart h4 { margin:0 0 8px; font-family:var(--mono); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
+  .items { display:flex; flex-wrap:wrap; gap:6px; min-height:30px; }
+  .item { font-family:var(--mono); font-size:13px; padding:3px 9px; border-radius:7px; background:var(--panel-2); border:1px solid var(--line); }
+  .item.lost { text-decoration:line-through; color:var(--bad); border-color:color-mix(in srgb, var(--bad) 40%, transparent); background:var(--bad-soft); }
+  .item.kept { color:var(--good); border-color:color-mix(in srgb, var(--good) 40%, transparent); background:var(--good-soft); }
+  .carrow { align-self:center; font-family:var(--mono); color:var(--muted); }
+  /* resource box (fencing) + steps (saga) */
+  .resource { border:1px solid var(--line); border-radius:10px; padding:14px 16px; background:var(--panel-2); font-family:var(--mono); font-size:13px; }
+  .resource .rv { font-size:16px; margin-top:4px; }
+  .holders { display:flex; gap:12px; flex-wrap:wrap; }
+  .holder { flex:1 1 150px; border:1px solid var(--line); border-radius:9px; padding:11px 13px; font-family:var(--mono); font-size:12px; background:var(--panel-2); }
+  .holder.paused { border-color:var(--warn); }
+  .steps { display:flex; flex-direction:column; gap:7px; }
+  .step { display:flex; align-items:center; gap:10px; font-family:var(--mono); font-size:12.5px; border:1px solid var(--line); border-radius:8px; padding:8px 11px; background:var(--panel-2); }
+  .step .st { margin-left:auto; }
+  .step.done { border-color:color-mix(in srgb, var(--good) 35%, transparent); }
+  .step.failed { border-color:color-mix(in srgb, var(--bad) 40%, transparent); background:var(--bad-soft); }
+  .step.comp { border-color:color-mix(in srgb, var(--warn) 40%, transparent); background:var(--warn-soft); color:var(--muted); }
+  /* clocks */
+  .clockrow { display:grid; grid-template-columns:110px 1fr; gap:12px; align-items:center; border:1px solid var(--line); border-radius:10px; padding:12px 14px; background:var(--panel-2); margin-bottom:10px; }
+  .clockrow .ct { font-family:var(--display); font-weight:600; font-size:14px; }
+  .clockrow .cd { font-family:var(--mono); font-size:12.5px; color:var(--muted); }
+  .clockrow .cd b { color:var(--ink); }
+  @media (max-width:880px) {
+    .app { display:block; }
+    .topbar { display:flex; align-items:center; gap:11px; position:sticky; top:0; z-index:30; padding:11px 16px; background:color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter:saturate(1.5) blur(10px); border-bottom:1px solid var(--line); }
+    .topbar b { font-family:var(--display); font-weight:600; font-size:15.5px; }
+    .hamburger { margin-left:auto; display:grid; place-items:center; width:38px; height:38px; border:1px solid var(--line); border-radius:9px; background:var(--panel); color:var(--ink); cursor:pointer; font-family:var(--mono); font-size:17px; }
+    .sidebar { position:fixed; top:0; left:0; height:100dvh; width:286px; transform:translateX(-100%); transition:transform .22s ease; box-shadow:0 0 70px rgba(0,0,0,.28); }
+    .app.nav-open .sidebar { transform:none; }
+    .backdrop { display:block; position:fixed; inset:0; z-index:39; background:rgba(0,0,0,.42); opacity:0; pointer-events:none; transition:opacity .22s; }
+    .app.nav-open .backdrop { opacity:1; pointer-events:auto; }
+    .main { padding:22px 18px 84px; }
+    .lab { grid-template-columns:1fr; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { scroll-behavior:auto !important; animation:none !important; transition:none !important; } }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand"><span class="glyph">↯</span><span class="wm"><b>Failure Lab</b><span>Distributed Systems</span></span></div>
+    <nav class="nav" id="nav" aria-label="Simulations"></nav>
+    <div class="side-foot">Every panel is also a runnable <code style="font-size:10px">npm run phaseN</code>.<br /><a href="https://github.com/swapnull-in/distributed-systems" target="_blank" rel="noopener">View source ↗</a></div>
+  </aside>
+  <div class="backdrop" id="backdrop"></div>
+
+  <main class="main">
+    <div class="topbar"><span class="glyph">↯</span><b>Failure Lab</b><button class="hamburger" id="hamburger" aria-label="Toggle navigation">≡</button></div>
+    <div class="main-inner">
+
+    <!-- OVERVIEW -->
+    <section class="phase" data-tab="Overview">
+      <div class="hero">
+        <p class="hero-eyebrow">Distributed Systems · Failure Lab</p>
+        <h1>Break it <em>on purpose</em>.</h1>
+        <p>Cut the network, pause a lock holder, kill a coordinator, drag the load — and watch the invariant
+          hold or break, right here in your browser. Every panel is one of the failure modes a Staff design
+          turns on, and the <strong>same simulation</strong> runs as a CLI phase.</p>
+      </div>
+      <div class="levers">
+        <div class="lever"><b>Consistency</b><span>Write skew under snapshot isolation, and CAP under a partition.</span></div>
+        <div class="lever"><b>Consensus &amp; locks</b><span>Raft split-brain and fencing tokens for safe locks.</span></div>
+        <div class="lever"><b>Transactions</b><span>2PC's in-doubt window vs a Saga's clean compensation.</span></div>
+        <div class="lever"><b>Fault tolerance</b><span>A retry storm tipping into metastable collapse.</span></div>
+        <div class="lever"><b>Conflict &amp; clocks</b><span>CRDTs vs LWW data loss; wall-clock skew vs Lamport/vector.</span></div>
+        <div class="lever"><b>Multi-region</b><span>Static stability — the fiber-cut drill with the capacity math.</span></div>
+      </div>
+      <p class="overview-hint"><b>Pick a simulation in the sidebar.</b> The one delivery rule underneath all of them:
+        <em>"&lt;choice&gt; because &lt;one requirement&gt;; I'd revisit if &lt;trigger&gt;"</em> — never "it depends."</p>
+    </section>
+
+    <!-- 1 · WRITE SKEW -->
+    <section class="phase" data-tab="1 · Write Skew">
+      <h2>Write skew under snapshot isolation</h2>
+      <p class="lede">Two transactions read the <em>same</em> snapshot, each writes a <em>different</em> row, and no
+        write-write conflict exists — so Snapshot Isolation (Postgres <code>REPEATABLE READ</code>) lets both commit
+        and together they break an invariant that spans the rows.</p>
+      <div class="card"><div class="lab">
+        <div class="controls">
+          <div><h2 style="font-size:15px;margin:0 0 2px">Two on-call doctors</h2><p class="lede" style="margin:0;font-size:13px">Invariant: at least one doctor on call. Both start on call; each transaction wants to go off.</p></div>
+          <label class="toggle"><input type="checkbox" id="ws-fix" /> <code>SERIALIZABLE</code> / <code>SELECT … FOR UPDATE</code></label>
+          <button class="act" id="ws-run">▶ Both go off-call at once</button>
+          <button class="ghost" id="ws-reset">↺ Reset</button>
+          <div class="verdict warn" id="ws-verdict"><span class="dot"></span><span id="ws-vtext">Run it with the fix off, then on.</span></div>
+        </div>
+        <div class="stage">
+          <div class="sidebox">
+            <div class="sidecard"><h4>T1 — Alice</h4><div id="ws-a">reads snapshot…</div></div>
+            <div class="sidecard"><h4>T2 — Bob</h4><div id="ws-b">reads snapshot…</div></div>
+          </div>
+          <div class="big" id="ws-count">2<small>doctors on call</small></div>
+          <p class="proof"><b>The proof:</b> under SI both read "2 on call" from the same snapshot and each writes a
+            <em>different</em> row — no conflict to detect, so both commit → <b>0 on call</b>. Any "exactly one of N" or
+            "no overlap" invariant is a write-skew risk. The fix makes the conflict <em>materialize</em>: SERIALIZABLE
+            (SSI aborts one, expect 40001 retries) or lock the rows both depend on so the second re-reads and refuses.</p>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- 2 · CAP -->
+    <section class="phase" data-tab="2 · CAP / PACELC">
+      <h2>CAP — what a partition actually forces</h2>
+      <p class="lede">P isn't optional on a real network. During a partition you choose, per data path: keep
+        <strong>C</strong>onsistency (minority refuses writes) or <strong>A</strong>vailability (both sides accept and
+        diverge). Move node 2 across the cut, pick a posture, and write from each side.</p>
+      <div class="card"><div class="lab">
+        <div class="controls">
+          <div><h2 style="font-size:15px;margin:0 0 2px">5 nodes, quorum = 3</h2><p class="lede" style="margin:0;font-size:13px">Click node 2 to move it across the cut; sides {0,1,2} vs {3,4} by default.</p></div>
+          <div><label class="fld">Posture</label><div class="seg"><button class="ghost sel" id="cap-cp">CP · consistent</button><button class="ghost" id="cap-ap">AP · available</button></div></div>
+          <div><label class="fld">Client writes from</label><div class="seg"><button class="ghost sel" id="cap-maj">majority side</button><button class="ghost" id="cap-min">minority side</button></div></div>
+          <button class="act" id="cap-write">▶ Write "v1"</button>
+          <button class="ghost" id="cap-heal">↺ Heal partition</button>
+          <div class="verdict warn" id="cap-verdict"><span class="dot"></span><span id="cap-vtext">Pick a posture and a side, then write.</span></div>
+        </div>
+        <div class="stage">
+          <div class="ring" id="cap-ring"></div>
+          <p class="proof"><b>The proof:</b> CP makes the minority side <b>refuse</b> writes (no quorum) so there's one
+            truth — availability sacrificed. AP lets <b>both</b> sides accept, so two versions live at once and you pay
+            the bill at reconciliation (LWW / vectors / CRDT). Lead with PACELC: even with no partition, the
+            latency-vs-consistency trade (waiting for a quorum ack) is paid on <em>every</em> request.</p>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- 3 · SPLIT-BRAIN / RAFT -->
+    <section class="phase" data-tab="3 · Split-brain">
+      <h2>Raft — split-brain made impossible</h2>
+      <p class="lede">Partition a 5-node cluster and run an election on each side. A side can elect a leader (and
+        commit) only with a <strong>majority</strong> (3 of 5) — so two leaders can never coexist. Click nodes to move
+        them across the cut.</p>
+      <div class="card"><div class="lab">
+        <div class="controls">
+          <div><h2 style="font-size:15px;margin:0 0 2px">Cut the cluster</h2><p class="lede" style="margin:0;font-size:13px">Click a node to move it to the other side, then run the election.</p></div>
+          <button class="act" id="raft-run">▶ Run an election on each side</button>
+          <button class="ghost" id="raft-reset">↺ Heal (all one side)</button>
+          <div class="verdict warn" id="raft-verdict"><span class="dot"></span><span id="raft-vtext">Move nodes across the cut, then run.</span></div>
+        </div>
+        <div class="stage">
+          <div class="ring" id="raft-ring"></div>
+          <div class="sidebox">
+            <div class="sidecard"><h4>Side A</h4><div id="raft-a">—</div></div>
+            <div class="sidecard"><h4>Side B</h4><div id="raft-b">—</div></div>
+          </div>
+          <p class="proof"><b>The proof:</b> a minority can't reach quorum, so it can neither elect a leader nor commit —
+            split-brain is <b>structurally impossible</b>, not just unlikely. The stranded side degrades to read-only
+            until the partition heals. (Even split → nobody commits — which is why cluster sizes are odd.)</p>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- 4 · FENCING -->
+    <section class="phase" data-tab="4 · Fencing">
+      <h2>Fencing tokens — a lock alone isn't safe</h2>
+      <p class="lede">A lock holder can be paused (stop-the-world GC, hypervisor stall) past its lease and wake up still
+        believing it holds the lock. A lock can never fix this — safety comes from the <strong>resource</strong>
+        rejecting any write whose fencing token is below the highest it has seen.</p>
+      <div class="card"><div class="lab">
+        <div class="controls">
+          <label class="toggle"><input type="checkbox" id="fen-on" checked /> Fencing tokens on</label>
+          <button class="act" id="fen-run">▶ Run the GC-pause race</button>
+          <button class="ghost" id="fen-reset">↺ Reset</button>
+          <div class="verdict warn" id="fen-verdict"><span class="dot"></span><span id="fen-vtext">Run it with fencing on, then off.</span></div>
+        </div>
+        <div class="stage">
+          <div class="holders">
+            <div class="holder" id="fen-a"><b>Holder A</b><br />idle</div>
+            <div class="holder" id="fen-b"><b>Holder B</b><br />idle</div>
+          </div>
+          <div class="resource"><div>protected resource</div><div class="rv" id="fen-res">value = "initial" · highest token = 0</div></div>
+          <p class="proof"><b>The proof:</b> without fencing, paused A wakes and clobbers B's write — silent corruption.
+            With a monotonic token, A writes with its <em>old</em> token and the resource rejects it (<code>token 1 &lt; 2</code>).
+            Safety lives at the resource, not the lock. YAGNI: a plain lock is fine for deduping a cron job; fencing is
+            for correctness-critical paths (money, uniqueness).</p>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- 5 · 2PC vs SAGA -->
+    <section class="phase" data-tab="5 · 2PC vs Saga">
+      <h2>Distributed transactions — 2PC vs Saga</h2>
+      <p class="lede">A transaction across services with no shared memory. <strong>2PC</strong> is atomic but if the
+        coordinator dies after PREPARE, participants hang <em>in-doubt</em> with locks held. A <strong>Saga</strong> is
+        local transactions with compensations — no global lock, and a late failure unwinds cleanly.</p>
+      <div class="card"><div class="lab">
+        <div class="controls">
+          <div><label class="fld">Protocol</label><div class="seg"><button class="ghost sel" id="tx-2pc">Two-phase commit</button><button class="ghost" id="tx-saga">Saga</button></div></div>
+          <button class="act" id="tx-run">▶ Run the flow</button>
+          <button class="ghost" id="tx-reset">↺ Reset</button>
+          <div class="verdict warn" id="tx-verdict"><span class="dot"></span><span id="tx-vtext">Pick a protocol and run it.</span></div>
+        </div>
+        <div class="stage">
+          <div class="steps" id="tx-steps"></div>
+          <p class="proof" id="tx-proof"><b>The proof:</b> kill the 2PC coordinator after PREPARE and both participants
+            are <b>in-doubt</b> — locks held indefinitely, blocking every other txn on those rows. The same flow as a
+            Saga runs local commits and, on a late failure, compensates in reverse (release, refund) with no global lock
+            ever held. Default to Saga; flip to 2PC only for a single tightly-coupled stack needing true atomicity.</p>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- 6 · RETRY STORM -->
+    <section class="phase" data-tab="6 · Retry Storm">
+      <h2>Retry storm → metastable failure</h2>
+      <p class="lede">A brief capacity dip (rounds 3–5). Watch what happens <em>after</em> capacity recovers: naive
+        retries <em>become</em> the load and the system stays collapsed — a stable-but-broken equilibrium — until a retry
+        budget and circuit breaker break the loop.</p>
+      <div class="card"><div class="lab">
+        <div class="controls">
+          <label class="toggle"><input type="checkbox" id="retry-fix" /> Retry budget + circuit breaker</label>
+          <button class="act" id="retry-run">▶ Run 12 rounds</button>
+          <div class="verdict warn" id="retry-verdict"><span class="dot"></span><span id="retry-vtext">Run it with the fix off, then on.</span></div>
+          <div class="legend"><span><span class="swatch" style="background:var(--good)"></span>goodput</span><span><span class="swatch" style="background:var(--bad)"></span>collapsed</span><span>· · · capacity</span></div>
+        </div>
+        <div class="stage">
+          <div class="chart" id="retry-chart"></div>
+          <p class="proof"><b>The proof:</b> naive retries turn a 3-round dip into a <b>permanent outage</b> — retries
+            become the load, so even after capacity returns the useful work stays near zero. A retry budget caps the
+            amplification and the breaker sheds load so the dependency can recover.</p>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- 7 · CRDT vs LWW -->
+    <section class="phase" data-tab="7 · CRDT vs LWW">
+      <h2>Merge two carts after a partition</h2>
+      <p class="lede">Both replicas took writes while split. Your merge rule decides whether a customer's item survives:
+        <strong>LWW</strong> keeps one replica by timestamp and silently drops the other's; an <strong>OR-Set</strong>
+        merges by union so every concurrent add survives.</p>
+      <div class="card"><div class="lab">
+        <div class="controls">
+          <button class="ghost" id="crdt-add1">＋ Replica 1 adds an item</button>
+          <button class="ghost" id="crdt-add2">＋ Replica 2 adds an item</button>
+          <div><label class="fld">Merge strategy</label><div class="seg"><button class="ghost" id="crdt-lww">LWW</button><button class="ghost sel" id="crdt-orset">OR-Set</button></div></div>
+          <button class="act" id="crdt-merge">▶ Heal &amp; merge</button>
+          <button class="ghost" id="crdt-reset">↺ Reset</button>
+          <div class="verdict warn" id="crdt-verdict"><span class="dot"></span><span id="crdt-vtext">Add items to each replica, pick a strategy, then merge.</span></div>
+        </div>
+        <div class="stage">
+          <div class="carts">
+            <div class="cart"><h4>Replica 1</h4><div class="items" id="cart1"></div></div>
+            <div class="carrow">＋</div>
+            <div class="cart"><h4>Replica 2</h4><div class="items" id="cart2"></div></div>
+            <div class="carrow">＝</div>
+            <div class="cart" style="flex-basis:180px"><h4>Merged</h4><div class="items" id="cartm"></div></div>
+          </div>
+          <p class="proof"><b>The proof:</b> <b>LWW</b> keeps one replica's value by timestamp and <em>silently drops</em>
+            the other's writes — fine for presence, indefensible for a cart. An <b>OR-Set</b> merges by union: every
+            concurrent add survives, in any order. The limit to name: "reserve exactly one of N" doesn't commute — that
+            needs consensus or region-homing.</p>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- 8 · CLOCKS -->
+    <section class="phase" data-tab="8 · Clocks">
+      <h2>Clocks — order without a shared now</h2>
+      <p class="lede">A lower wall-clock timestamp does <em>not</em> mean "happened first" — skew and NTP steps corrupt
+        ordering. Watch wall-clock LWW pick the wrong winner, Lamport restore the order, and vector clocks flag a truly
+        <strong>concurrent</strong> pair instead of silently merging it.</p>
+      <div class="card"><div class="lab">
+        <div class="controls">
+          <div><label class="fld">Second event pair</label><div class="seg"><button class="ghost sel" id="clk-causal">causal (x → y)</button><button class="ghost" id="clk-conc">concurrent</button></div></div>
+          <p class="lede" style="margin:0;font-size:13px">A writes <code>x</code>, messages B, B replies with <code>y</code>. A's wall clock runs 30ms ahead.</p>
+          <div class="verdict warn" id="clk-verdict"><span class="dot"></span><span id="clk-vtext">Compare how each clock orders the pair.</span></div>
+        </div>
+        <div class="stage" id="clk-stage"></div>
+      </div></div>
+    </section>
+
+    <!-- 9 · STATIC STABILITY -->
+    <section class="phase" data-tab="9 · Static Stability">
+      <h2>Multi-region — the fiber-cut drill</h2>
+      <p class="lede">Three regions at the same steady utilization. Cut one — the survivors must absorb its load with
+        capacity that <em>already exists</em> (autoscaling can't save you: cold-start stampede on the cloud's worst day).</p>
+      <div class="card"><div class="lab">
+        <div class="controls">
+          <div><div class="slabel"><span>steady utilization</span><b><span id="util-val">66</span>%</b></div><input type="range" id="util" min="40" max="95" value="66" /></div>
+          <button class="act" id="region-cut">✕ Cut a region</button>
+          <button class="ghost" id="region-reset">↺ Restore all three</button>
+          <div class="verdict warn" id="region-verdict"><span class="dot"></span><span id="region-vtext">Set a utilization, then cut a region.</span></div>
+        </div>
+        <div class="stage">
+          <div class="regions" id="regions"></div>
+          <p class="proof"><b>The proof:</b> with 3 regions each must run at <b>≤ 66%</b> so a survivor peaks at ≤ 100%
+            (each takes 1.5× its load). That "idle" third isn't waste — it's the <b>RTO insurance premium</b>. Cut it to
+            save money and the next region loss becomes an outage.</p>
+        </div>
+      </div></div>
+    </section>
+
+    <div class="side-foot" style="margin-top:24px; padding-top:22px; border-top:1px solid var(--line); text-align:center">Browser port of the <code style="font-size:10px">src/phase*</code> scripts · same simulations · MIT</div>
+    </div><!-- /main-inner -->
+  </main>
+</div>
+
+<script>
+const sections = [...document.querySelectorAll('section.phase')];
+const navEl = document.getElementById('nav'), appEl = document.getElementById('app');
+const tabButtons = [];
+const slug = s => s.dataset.tab.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const closeNav = () => appEl.classList.remove('nav-open');
+const TIER_OF = {
+  'overview':'Overview',
+  '1-write-skew':'Consistency', '2-cap-pacelc':'Consistency',
+  '3-split-brain':'Consensus & locks', '4-fencing':'Consensus & locks',
+  '5-2pc-vs-saga':'Transactions',
+  '6-retry-storm':'Fault tolerance',
+  '7-crdt-vs-lww':'Conflict & clocks', '8-clocks':'Conflict & clocks',
+  '9-static-stability':'Multi-region',
+};
+navEl.setAttribute('role','tablist'); navEl.setAttribute('aria-orientation','vertical');
+let curTier = null, groupEl = null;
+sections.forEach((sec, i) => {
+  const id = slug(sec), tier = TIER_OF[id] || 'More';
+  if (tier !== curTier) { groupEl = document.createElement('div'); groupEl.className='nav-group';
+    const h = document.createElement('div'); h.className='nav-group-label'; h.textContent=tier; groupEl.appendChild(h); navEl.appendChild(groupEl); curTier=tier; }
+  sec.id = 'panel-'+id; sec.setAttribute('role','tabpanel');
+  const parts = sec.dataset.tab.split('·').map(s=>s.trim());
+  const b = document.createElement('button'); b.className='nav-item'; b.setAttribute('role','tab');
+  b.innerHTML = `<span class="n">${parts.length>1?parts[0]:''}</span><span class="t">${parts.length>1?parts[1]:parts[0]}</span>`;
+  b.onclick = () => { activate(i, true); closeNav(); };
+  b.onkeydown = (e) => { const d = e.key==='ArrowDown'?1:e.key==='ArrowUp'?-1:e.key==='Home'?'first':e.key==='End'?'last':0; if(!d) return; e.preventDefault();
+    const n = d==='first'?0:d==='last'?sections.length-1:(i+d+sections.length)%sections.length; activate(n,true); tabButtons[n].focus(); };
+  tabButtons.push(b); groupEl.appendChild(b);
+});
+function activate(i, push) {
+  sections.forEach((s,j)=>s.classList.toggle('active', i===j));
+  tabButtons.forEach((b,j)=>{ const on=i===j; b.classList.toggle('active',on); b.setAttribute('aria-selected',String(on)); b.tabIndex=on?0:-1; });
+  if (push && location.hash.slice(1)!==slug(sections[i])) history.replaceState(null,'','#'+slug(sections[i]));
+  window.scrollTo({ top:0, behavior: reduceMotion?'auto':'smooth' });
+}
+function fromHash(){ const i = sections.findIndex(s=>slug(s)===location.hash.slice(1)); activate(i>=0?i:0, false); }
+addEventListener('hashchange', fromHash); fromHash();
+document.getElementById('hamburger')?.addEventListener('click', ()=>appEl.classList.toggle('nav-open'));
+document.getElementById('backdrop')?.addEventListener('click', closeNav);
+addEventListener('keydown', e => { if (e.key==='Escape') closeNav(); });
+
+const $ = (s,r=document)=>r.querySelector(s);
+const el = (t,c)=>{ const n=document.createElement(t); if(c)n.className=c; return n; };
+function verdict(sel, tsel, kind, text){ const v=$(sel); v.className='verdict '+kind; $(tsel).innerHTML=text; }
+
+/* ══ 1 · WRITE SKEW ══ */
+(function(){
+  function reset(){ $('#ws-a').textContent='reads snapshot…'; $('#ws-b').textContent='reads snapshot…'; $('#ws-count').innerHTML='2<small>doctors on call</small>'; verdict('#ws-verdict','#ws-vtext','warn','Run it with the fix off, then on.'); }
+  $('#ws-run').onclick = () => {
+    const fix = $('#ws-fix').checked;
+    if (!fix) {
+      $('#ws-a').innerHTML='reads snapshot → <b>2 on call</b><br />safe to go off → writes Alice=off';
+      $('#ws-b').innerHTML='reads <em>same</em> snapshot → <b>2 on call</b><br />safe to go off → writes Bob=off';
+      $('#ws-count').innerHTML='0<small>doctors on call</small>';
+      verdict('#ws-verdict','#ws-vtext','bad','Both read 2 and each wrote a different row — SI saw no conflict, both commit → <b>0 on call</b>. Invariant violated.');
+    } else {
+      $('#ws-a').innerHTML='takes <code>FOR UPDATE</code> locks first<br />reads 2 → writes Alice=off, commits';
+      $('#ws-b').innerHTML='blocks on the locks…<br />unblocks, <b>re-reads → 1 on call</b> → REFUSES';
+      $('#ws-count').innerHTML='1<small>doctors on call</small>';
+      verdict('#ws-verdict','#ws-vtext','ok','The lock made the conflict materialize: T2 blocked, re-read fresh state (1 on call) and refused. Invariant holds.');
+    }
+  };
+  $('#ws-fix').onchange = reset; $('#ws-reset').onclick = reset; reset();
+})();
+
+/* ══ 2 · CAP ══ */
+(function(){
+  let sides=[0,0,0,0,0], mode='CP', clientSide=0; // sides: 0=A(majority default),1=B
+  const ring=$('#cap-ring'); let vals=['v0','v0','v0','v0','v0'];
+  function draw(){
+    ring.innerHTML='';
+    sides.forEach((s,i)=>{ const n=el('button','node '+(s===0?'A':'B'));
+      n.innerHTML=`<span class="side">SIDE ${s===0?'A':'B'}</span><span class="id">${i}</span><span class="side">${vals[i]}</span>`;
+      n.onclick=()=>{ sides[i]=sides[i]?0:1; draw(); verdict('#cap-verdict','#cap-vtext','warn','Cut changed. Write to see the posture bite.'); };
+      ring.appendChild(n); });
+  }
+  const sizeOf = side => sides.filter(s=>s===side).length;
+  function setSel(a,b,cond){ $(a).classList.toggle('sel',cond); $(b).classList.toggle('sel',!cond); }
+  $('#cap-cp').onclick=()=>{mode='CP';setSel('#cap-cp','#cap-ap',true);}; $('#cap-ap').onclick=()=>{mode='AP';setSel('#cap-cp','#cap-ap',false);};
+  $('#cap-maj').onclick=()=>{clientSide=0;setSel('#cap-maj','#cap-min',true);}; $('#cap-min').onclick=()=>{clientSide=1;setSel('#cap-maj','#cap-min',false);};
+  $('#cap-write').onclick=()=>{
+    const reachable = sizeOf(clientSide), quorum=3;
+    const sideName = clientSide===0?'A':'B';
+    if (mode==='CP' && reachable<quorum){
+      verdict('#cap-verdict','#cap-vtext','ok',`CP: side ${sideName} has only ${reachable}/5 reachable (&lt; quorum 3) → <b>REJECT</b>. No divergence — availability sacrificed to stay consistent.`);
+      return;
+    }
+    sides.forEach((s,i)=>{ if(s===clientSide) vals[i]='v1'; }); draw();
+    if (mode==='AP' && reachable<quorum)
+      verdict('#cap-verdict','#cap-vtext','bad',`AP: minority side ${sideName} accepted "v1" (${reachable} nodes) while the other side still has v0 → <b>two versions live</b>. Availability kept; the bill is reconciliation.`);
+    else
+      verdict('#cap-verdict','#cap-vtext','ok',`${mode}: side ${sideName} had quorum (${reachable}/5) → wrote "v1". One truth.`);
+  };
+  $('#cap-heal').onclick=()=>{ sides=[0,0,0,0,0]; vals=['v0','v0','v0','v0','v0']; draw(); verdict('#cap-verdict','#cap-vtext','ok','Healed — one partition, values converge on the next write.'); };
+  draw();
+})();
+
+/* ══ 3 · RAFT ══ */
+(function(){
+  let sides=[0,0,0,0,0]; const ring=$('#raft-ring');
+  function draw(leader){ ring.innerHTML='';
+    sides.forEach((s,i)=>{ const n=el('button','node '+(s===0?'A':'B'));
+      n.innerHTML=`<span class="side">SIDE ${s===0?'A':'B'}</span><span class="id">${i}</span>`;
+      if(leader!==undefined && s===leader) n.classList.add('leader');
+      n.onclick=()=>{ sides[i]=sides[i]?0:1; draw(); $('#raft-a').textContent='—'; $('#raft-b').textContent='—'; verdict('#raft-verdict','#raft-vtext','warn','Cut set. Run an election.'); };
+      ring.appendChild(n); }); }
+  $('#raft-run').onclick=()=>{
+    const a=sides.filter(s=>s===0).length, b=5-a, maj=3, aL=a>=maj, bL=b>=maj, leader=aL?0:(bL?1:undefined);
+    draw(leader);
+    $('#raft-a').innerHTML=`${a} nodes · `+(aL?'<span class="chip good">LEADER · commits</span>':(a===0?'<span class="chip">empty</span>':'<span class="chip bad">no quorum · read-only</span>'));
+    $('#raft-b').innerHTML=`${b} nodes · `+(bL?'<span class="chip good">LEADER · commits</span>':(b===0?'<span class="chip">empty</span>':'<span class="chip bad">no quorum · read-only</span>'));
+    if(leader===undefined) verdict('#raft-verdict','#raft-vtext','bad','Even split — neither side has a majority, so <b>nothing commits</b>. (Why cluster sizes are odd.)');
+    else verdict('#raft-verdict','#raft-vtext','ok','Exactly one leader, on the majority side. The minority can’t commit — split-brain avoided.');
+  };
+  $('#raft-reset').onclick=()=>{ sides=[0,0,0,0,0]; draw(); $('#raft-a').textContent='—'; $('#raft-b').textContent='—'; verdict('#raft-verdict','#raft-vtext','ok','Healed — one cluster, one leader.'); };
+  draw();
+})();
+
+/* ══ 4 · FENCING ══ */
+(function(){
+  function reset(){ $('#fen-a').innerHTML='<b>Holder A</b><br />idle'; $('#fen-b').innerHTML='<b>Holder B</b><br />idle'; $('#fen-a').className='holder'; $('#fen-res').textContent='value = "initial" · highest token = 0'; verdict('#fen-verdict','#fen-vtext','warn','Run it with fencing on, then off.'); }
+  $('#fen-run').onclick=()=>{
+    const fenced=$('#fen-on').checked;
+    const tA = fenced?1:null, tB = fenced?2:null;
+    $('#fen-a').className='holder paused';
+    $('#fen-a').innerHTML=`<b>Holder A</b> ${fenced?'· token 1':''}<br />acquired lock → <b>GC-paused</b> ⏸`;
+    $('#fen-b').innerHTML=`<b>Holder B</b> ${fenced?'· token 2':''}<br />lease expired → acquired → writes "B-correct"`;
+    if (fenced) {
+      $('#fen-res').innerHTML='value = "<b>B-correct</b>" · highest token = 2';
+      setTimeout(()=>{ $('#fen-a').innerHTML=`<b>Holder A</b> · token 1<br />wakes, writes "A-stale" with old token`;
+        verdict('#fen-verdict','#fen-vtext','ok','A woke and wrote with token 1 &lt; 2 → the <b>resource rejected it</b>. Final value stays "B-correct". Safety came from the resource, not the lock.'); }, reduceMotion?0:450);
+    } else {
+      $('#fen-res').innerHTML='value = "B-correct" · (no token checked)';
+      setTimeout(()=>{ $('#fen-a').innerHTML=`<b>Holder A</b><br />wakes, still thinks it holds the lock → writes "A-stale"`;
+        $('#fen-res').innerHTML='value = "<b>A-stale</b>" · (no token checked)';
+        verdict('#fen-verdict','#fen-vtext','bad','A woke and <b>clobbered</b> B’s write — silent corruption. A lock can’t prevent this; the pause happens after the check.'); }, reduceMotion?0:450);
+    }
+  };
+  $('#fen-on').onchange=reset; $('#fen-reset').onclick=reset; reset();
+})();
+
+/* ══ 5 · 2PC vs SAGA ══ */
+(function(){
+  let proto='2pc';
+  function setP(p){ proto=p; $('#tx-2pc').classList.toggle('sel',p==='2pc'); $('#tx-saga').classList.toggle('sel',p==='saga'); reset(); }
+  $('#tx-2pc').onclick=()=>setP('2pc'); $('#tx-saga').onclick=()=>setP('saga');
+  function row(text, cls, status){ const s=el('div','step'+(cls?' '+cls:'')); s.innerHTML=`<span>${text}</span><span class="st">${status||''}</span>`; return s; }
+  function reset(){ const box=$('#tx-steps'); box.innerHTML='';
+    if(proto==='2pc'){ box.appendChild(row('coordinator → PREPARE','','idle')); box.appendChild(row('inventory','','idle')); box.appendChild(row('payment','','idle')); }
+    else { box.appendChild(row('reserve inventory','','idle')); box.appendChild(row('charge payment','','idle')); box.appendChild(row('dispatch shipment','','idle')); }
+    verdict('#tx-verdict','#tx-vtext','warn','Run the flow.');
+  }
+  $('#tx-run').onclick=()=>{
+    const box=$('#tx-steps'); box.innerHTML='';
+    if(proto==='2pc'){
+      box.appendChild(row('Phase 1 · coordinator sends PREPARE','done','sent'));
+      box.appendChild(row('inventory','done','PREPARED · 🔒 locked'));
+      box.appendChild(row('payment','done','PREPARED · 🔒 locked'));
+      box.appendChild(row('Phase 2 · coordinator sends COMMIT','failed','💥 coordinator crashes'));
+      box.appendChild(row('inventory','comp','in-doubt · 🔒 held'));
+      box.appendChild(row('payment','comp','in-doubt · 🔒 held'));
+      verdict('#tx-verdict','#tx-vtext','bad','No decision arrives — both participants are <b>in-doubt</b>, locks held indefinitely, blocking every other txn on those rows. That’s the 2PC tax.');
+    } else {
+      box.appendChild(row('reserve inventory','done','✓ done'));
+      box.appendChild(row('charge payment','done','✓ done'));
+      box.appendChild(row('dispatch shipment','failed','✕ FAILED'));
+      box.appendChild(row('↩ compensate: refund payment','comp','undone'));
+      box.appendChild(row('↩ compensate: release inventory','comp','undone'));
+      verdict('#tx-verdict','#tx-vtext','ok','Step 3 failed → compensations run in reverse (refund, release). No global lock was ever held; the system is consistent again.');
+    }
+  };
+  $('#tx-reset').onclick=reset; setP('2pc');
+})();
+
+/* ══ 6 · RETRY STORM ══ */
+(function(){
+  const BASE=80, NORMAL=100, DIP=40, ROUNDS=12, RF=3, DIPSET=new Set([3,4,5]);
+  const cap=r=>DIPSET.has(r)?DIP:NORMAL;
+  function sim(fixed){ const out=[]; let rq=0, open=false;
+    for(let r=1;r<=ROUNDS;r++){ const c=cap(r); if(fixed&&open) rq=0;
+      const adm=fixed?Math.min(rq,Math.floor(BASE*0.1)):rq; const off=BASE+adm, srv=Math.min(off,c), fail=off-srv;
+      out.push({ good:Math.round(srv*(BASE/off)), cap:c });
+      if(!fixed) rq=Math.min(fail*RF,1e5); else { open=(fail/off)>0.3; rq=fail; } }
+    return out; }
+  const chart=$('#retry-chart');
+  function draw(animate){ const fixed=$('#retry-fix').checked, data=sim(fixed); chart.innerHTML='';
+    data.forEach((d,i)=>{ const col=el('div','col'); const bar=el('div','gp');
+      const collapsed=!fixed&&i>=5&&d.good<20; bar.style.background=collapsed?'var(--bad)':'var(--good)';
+      const h=Math.round(d.good/BASE*130); bar.style.height=(animate?0:h)+'px';
+      if(animate) requestAnimationFrame(()=>setTimeout(()=>bar.style.height=h+'px', reduceMotion?0:i*55));
+      const cl=el('div'); cl.style.cssText='position:absolute;height:1px;border-top:1px dashed var(--muted);left:0;right:0;opacity:.5;bottom:'+Math.round(d.cap/BASE*130+18)+'px';
+      const rn=el('div','rn'); rn.textContent=i+1; col.appendChild(bar); col.appendChild(rn); chart.appendChild(col); });
+    const rec=data[data.length-1].good;
+    if(fixed) verdict('#retry-verdict','#retry-vtext','ok',`Recovered to ${rec}/${BASE} after the dip — the breaker shed the storm.`);
+    else verdict('#retry-verdict','#retry-vtext','bad',`Still ${rec}/${BASE} long after capacity returned — retries <b>became</b> the load. Metastable.`);
+  }
+  $('#retry-run').onclick=()=>draw(true); $('#retry-fix').onchange=()=>draw(true); draw(false);
+})();
+
+/* ══ 7 · CRDT vs LWW ══ */
+(function(){
+  const POOL=['📕 book','🖊 pen','🎧 buds','🔌 cable','☕ mug','🧦 socks','🔦 torch','🧵 thread'];
+  let c1=[], c2=[], strat='orset', clock=1000;
+  function render(merged, lost, kept){
+    const put=(box,arr)=>{ box.innerHTML=''; arr.forEach(it=>{ const d=el('div','item'); d.textContent=it.label; box.appendChild(d); }); };
+    put($('#cart1'),c1); put($('#cart2'),c2);
+    const m=$('#cartm'); m.innerHTML=''; (merged||[]).forEach(it=>{ const d=el('div','item'+(lost&&lost.has(it.id)?' lost':'')+(kept&&kept.has(it.id)?' kept':'')); d.textContent=it.label; m.appendChild(d); });
+  }
+  function add(w){ const used=new Set([...c1,...c2].map(x=>x.label)); const label=POOL.find(p=>!used.has(p))||POOL[(c1.length+c2.length)%POOL.length];
+    const it={ id:(w===1?'r1-':'r2-')+(clock++), label, ts:clock }; (w===1?c1:c2).push(it); render();
+    verdict('#crdt-verdict','#crdt-vtext','warn',`Replica ${w} now holds ${(w===1?c1:c2).length} item(s), taken during the partition.`); }
+  $('#crdt-add1').onclick=()=>add(1); $('#crdt-add2').onclick=()=>add(2);
+  function setS(s){ strat=s; $('#crdt-lww').classList.toggle('sel',s==='lww'); $('#crdt-orset').classList.toggle('sel',s==='orset'); }
+  $('#crdt-lww').onclick=()=>setS('lww'); $('#crdt-orset').onclick=()=>setS('orset');
+  $('#crdt-merge').onclick=()=>{
+    if(!c1.length&&!c2.length){ verdict('#crdt-verdict','#crdt-vtext','warn','Add some items first.'); return; }
+    if(strat==='lww'){ const t1=c1.length?Math.max(...c1.map(x=>x.ts)):-1, t2=c2.length?Math.max(...c2.map(x=>x.ts)):-1;
+      const winner=t1>=t2?c1:c2, loser=t1>=t2?c2:c1, merged=[...winner,...loser], lost=new Set(loser.map(x=>x.id));
+      render(merged,lost,null); verdict('#crdt-verdict','#crdt-vtext','bad',`LWW kept Replica ${t1>=t2?1:2}’s cart and <b>DROPPED ${loser.length} item(s)</b> — silent data loss.`);
+    } else { const merged=[...c1,...c2], kept=new Set(merged.map(x=>x.id));
+      render(merged,null,kept); verdict('#crdt-verdict','#crdt-vtext','ok',`OR-Set merged by union — all ${merged.length} concurrent adds survived, order-independent.`); }
+  };
+  $('#crdt-reset').onclick=()=>{ c1=[]; c2=[]; clock=1000; render(); verdict('#crdt-verdict','#crdt-vtext','warn','Cleared. Add items to each replica.'); };
+  setS('orset'); render();
+})();
+
+/* ══ 8 · CLOCKS ══ */
+(function(){
+  let scenario='causal';
+  function setSc(s){ scenario=s; $('#clk-causal').classList.toggle('sel',s==='causal'); $('#clk-conc').classList.toggle('sel',s==='conc'); draw(); }
+  $('#clk-causal').onclick=()=>setSc('causal'); $('#clk-conc').onclick=()=>setSc('conc');
+  const cmpVec=(a,b)=>{ const le=a.every((v,i)=>v<=b[i]), ge=a.every((v,i)=>v>=b[i]);
+    if(le&&ge) return 'equal'; if(le) return 'x → y (happened-before)'; if(ge) return 'y → x (happened-before)'; return 'CONCURRENT — independent'; };
+  function draw(){
+    const stage=$('#clk-stage'); stage.innerHTML='';
+    // wall clock
+    const xWall=1000, yWall = scenario==='causal' ? 985 : 985;
+    const wallRow = el('div','clockrow');
+    wallRow.innerHTML=`<div class="ct">Wall clock</div><div class="cd">x@<b>${xWall}ms</b> · y@<b>${yWall}ms</b> — LWW keeps the higher stamp → <span class="chip bad">x</span> ❌ discards the newer y (skew inverted causality)</div>`;
+    stage.appendChild(wallRow);
+    // lamport
+    const lamRow = el('div','clockrow');
+    if (scenario==='causal') lamRow.innerHTML=`<div class="ct">Lamport</div><div class="cd">x → L=1; message carries 1; y → max(0,1)+1 = <b>2</b> → <span class="chip good">x before y</span> ✓ order restored regardless of wall clocks</div>`;
+    else lamRow.innerHTML=`<div class="ct">Lamport</div><div class="cd">p → L=1, q → L=1 (no message between them) → a <b>total order</b> is imposed, but it <em>can’t tell</em> this pair is concurrent</div>`;
+    stage.appendChild(lamRow);
+    // vector
+    const vecRow = el('div','clockrow');
+    const a = scenario==='causal' ? [1,0] : [2,0], b = scenario==='causal' ? [1,1] : [0,2];
+    const res = cmpVec(a,b); const chip = res.startsWith('CONCURRENT') ? `<span class="chip warn">${res}</span>` : `<span class="chip good">${res}</span>`;
+    vecRow.innerHTML=`<div class="ct">Vector</div><div class="cd">x=V[${a}] · y=V[${b}] → ${chip} ${scenario==='conc'?'✓ flagged as a real conflict to merge, not a false winner to pick':'✓ detects the true happened-before'}</div>`;
+    stage.appendChild(vecRow);
+    if (scenario==='causal') verdict('#clk-verdict','#clk-vtext','ok','Wall-clock LWW picks the wrong winner; Lamport and vector both recover the x → y order.');
+    else verdict('#clk-verdict','#clk-vtext','warn','Only the <b>vector clock</b> flags the pair as CONCURRENT — Lamport would silently impose an order and LWW would drop one.');
+  }
+  setSc('causal');
+})();
+
+/* ══ 9 · STATIC STABILITY ══ */
+(function(){
+  const REGIONS=['us-east','us-west','eu-west']; let deadIdx=-1; const box=$('#regions');
+  const pct=v=>Math.round(v/118*182);
+  $('#util').oninput=e=>{ $('#util-val').textContent=e.target.value; draw(); };
+  function draw(){ const util=+$('#util').value; box.innerHTML='';
+    const ceil=el('div','ceil'); ceil.style.bottom=pct(100)+'px'; ceil.innerHTML='<span>capacity</span>'; box.appendChild(ceil);
+    const survivors=REGIONS.filter((_,i)=>i!==deadIdx).length||1;
+    REGIONS.forEach((name,i)=>{ const dead=i===deadIdx; let load=util; if(deadIdx>=0&&!dead) load=util+(util/survivors);
+      const wrap=el('div','region'); const bar=el('div','bar'+(dead?' dead':'')+(load>100?' over':'')); bar.style.height=pct(Math.min(load,118))+'px';
+      wrap.appendChild(bar); const rv=el('div','rval'); rv.textContent=dead?'down':Math.round(load)+'%'; rv.style.color=load>100?'var(--bad)':'var(--ink)';
+      const rn=el('div','rname'); rn.textContent=name; wrap.appendChild(rv); wrap.appendChild(rn); box.appendChild(wrap); }); }
+  $('#region-cut').onclick=()=>{ if(deadIdx<0) deadIdx=0; draw(); const util=+$('#util').value, peak=Math.round(util*1.5);
+    if(peak<=100) verdict('#region-verdict','#region-vtext','ok',`Survivor peak ${peak}% — under capacity. A region loss is a <b>non-event</b>; the headroom was already paid for.`);
+    else verdict('#region-verdict','#region-vtext','bad',`Survivor peak ${peak}% — <b>over capacity</b>. Survivors overload, requests shed. You cut the headroom you needed; RTO broken.`); };
+  $('#region-reset').onclick=()=>{ deadIdx=-1; draw(); verdict('#region-verdict','#region-vtext','ok','All three healthy.'); };
+  draw();
+})();
+</script>
+</body>
+</html>

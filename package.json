@@ -14,7 +14,9 @@
     "phase7": "node src/phase7/crdt.ts",
     "phase8": "node src/phase8/clocks.ts",
     "capstone": "node src/capstone/multi-region.ts",
-    "dashboard": "node src/dashboard/server.ts",
+    "web": "node web/serve.mjs",
+    "dashboard": "node web/serve.mjs",
+    "deploy": "npx wrangler pages deploy web --project-name distributed-systems",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": { "typescript": "^5.7.0", "@types/node": "^22.10.0" }
