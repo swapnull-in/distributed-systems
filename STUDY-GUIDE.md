@@ -23,9 +23,9 @@ This repo is the runnable half of **Core Course / 02-distributed-systems.md** (p
 
 ## Go deeper
 
-- **Deep Dives/08-zookeeper.md** — the production face of phases 3–4: ephemeral znodes, watches, and zxid as a real fencing token.
-- **Deep Dives/14-pattern-contention.md** — phase 1's write skew and phase 4's locks generalized: who wins when many writers want one row/slot.
-- **Deep Dives/15-pattern-multi-step-processes.md** — phase 5 and 10 at design-round scale: sagas, pivots, and workflow engines for multi-step flows.
+- **[Deep Dives/08-zookeeper.md](https://github.com/swapnull-in/system-design/blob/main/Deep%20Dives/08-zookeeper.md)** — the production face of phases 3–4: ephemeral znodes, watches, and zxid as a real fencing token.
+- **[Deep Dives/14-pattern-contention.md](https://github.com/swapnull-in/system-design/blob/main/Deep%20Dives/14-pattern-contention.md)** — phase 1's write skew and phase 4's locks generalized: who wins when many writers want one row/slot.
+- **[Deep Dives/15-pattern-multi-step-processes.md](https://github.com/swapnull-in/system-design/blob/main/Deep%20Dives/15-pattern-multi-step-processes.md)** — phase 5 and 10 at design-round scale: sagas, pivots, and workflow engines for multi-step flows.
 - **DDIA ch. 5 (06-replication.md)** — the full replication story behind phases 9 and 12: leaders, lag, quorum edge cases.
 - **DDIA ch. 7 (08-transactions.md)** — isolation levels and write skew (phase 1) with the SSI internals the module summarizes.
 - **DDIA ch. 9 (10-consistency-and-consensus.md)** — linearizability, causality, and consensus (phases 2, 3, 8, 11) from first principles.
