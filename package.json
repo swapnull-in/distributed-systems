@@ -18,6 +18,7 @@
     "phase11": "node src/phase11/hlc.ts",
     "phase12": "node src/phase12/quorum-read-repair.ts",
     "phase13": "node src/phase13/bulkheads.ts",
+    "phase14": "node src/phase14/durable-execution.ts",
     "capstone": "node src/capstone/multi-region.ts",
     "web": "node web/serve.mjs",
     "dashboard": "node web/serve.mjs",
