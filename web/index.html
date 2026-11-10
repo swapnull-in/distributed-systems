@@ -455,6 +455,35 @@
       </div></div>
     </section>
 
+    <section class="phase" data-tab="14 · Durable Execution">
+      <h2>Durable execution — the history is the state</h2>
+      <p class="lede">A workflow engine records every step's result in an <strong>event history</strong>. After a
+        crash, a new worker runs the workflow from the top; steps already in the history return their recorded result
+        and <strong>do not run again</strong>. A step can still run twice if the worker dies before recording it, so
+        steps need an idempotency key. <em>(Deep Dive 37 · <code>npm run phase14</code>)</em></p>
+      <div class="card"><div class="lab">
+        <div class="controls">
+          <button class="act" id="dx-step">▶ Run next step</button>
+          <button class="ghost" id="dx-crash">💥 Crash the worker</button>
+          <button class="ghost" id="dx-gap">💥 Crash in the gap (charged, not recorded)</button>
+          <button class="ghost" id="dx-key">Idempotency key: on</button>
+          <button class="ghost" id="dx-reset">↺ Reset</button>
+          <div class="verdict" id="dx-verdict"><span class="dot"></span><span id="dx-vtext">Workflow order-1001: charge → reserve → ship. Run a step, crash, and watch the restart replay.</span></div>
+        </div>
+        <div class="stage">
+          <div style="display:flex;gap:18px;font-family:var(--mono)">
+            <div><div style="font-size:24px" id="dx-charges">0</div><div style="font-size:10px;color:var(--muted)">CHARGES AT PROVIDER</div></div>
+            <div><div style="font-size:24px" id="dx-hist">0</div><div style="font-size:10px;color:var(--muted)">EVENTS IN HISTORY</div></div>
+            <div><div style="font-size:24px" id="dx-next">charge</div><div style="font-size:10px;color:var(--muted)">NEXT STEP</div></div>
+          </div>
+          <div class="log-list" id="dx-log" style="font-family:var(--mono);font-size:12px;line-height:1.7">—</div>
+          <p class="proof"><b>The proof:</b> crash after any recorded step and the restart <b>replays</b> it without
+            touching the provider. Crash in the gap with the key off and the customer is charged <b>twice</b>; with the
+            key on, the provider recognises <code>order-1001:charge</code> and returns the first receipt.</p>
+        </div>
+      </div></div>
+    </section>
+
     <!-- 6 · RETRY STORM -->
     <section class="phase" data-tab="6 · Retry Storm">
       <h2>Retry storm → metastable failure</h2>
@@ -604,7 +633,7 @@ const TIER_OF = {
   'overview':'Overview',
   '1-write-skew':'Consistency', '2-cap-pacelc':'Consistency', '9-session-guarantees':'Consistency', '12-quorum':'Consistency',
   '3-split-brain':'Consensus & locks', '4-fencing':'Consensus & locks',
-  '5-2pc-vs-saga':'Transactions', '10-outbox':'Transactions',
+  '5-2pc-vs-saga':'Transactions', '10-outbox':'Transactions', '14-durable-execution':'Transactions',
   '6-retry-storm':'Fault tolerance', '13-bulkheads':'Fault tolerance',
   '7-crdt-vs-lww':'Conflict & clocks', '8-clocks':'Conflict & clocks', '11-hlc':'Conflict & clocks',
   'static-stability':'Multi-region',
@@ -950,6 +979,47 @@ function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.im
       ['next @ wall 2003', `(pt=<b>2003</b>, l=<b>0</b>) — pt jumps to real time, <code>l</code> resets → stays small (constant size), never blows up like a Lamport counter`],
     ]); verdict('#hlc-verdict','#hlc-vtext','ok','pt tracks physical time (human-readable, range-scannable); l is a tiny tie-breaker within one instant that resets. Constant size, no atomic clocks.'); };
   $('#hlc-run').click();
+})();
+(function(){
+  var STEPS=['charge','reserve','ship'], history, charges, seenKey, useKey=true, cursor, logs;
+  function reset(){ history=[]; charges=0; seenKey=false; cursor=0; logs=[]; }
+  function paint(msg,kind){
+    var c=document.getElementById('dx-charges'); c.textContent=charges; c.style.color=charges>1?'var(--bad)':'var(--good)';
+    document.getElementById('dx-hist').textContent=history.length;
+    document.getElementById('dx-next').textContent=history.length<STEPS.length?STEPS[history.length]:'done';
+    document.getElementById('dx-key').textContent='Idempotency key: '+(useKey?'on':'off');
+    document.getElementById('dx-log').innerHTML=logs.length?logs.join('<br>'):'—';
+    var v=document.getElementById('dx-verdict'); v.className='verdict '+(kind||'warn');
+    document.getElementById('dx-vtext').innerHTML=msg;
+  }
+  function effect(name){            // the side effect a step performs
+    if(name!=='charge') return;
+    if(useKey && seenKey){ logs.unshift('provider: key order-1001:charge seen before → returned the first receipt'); return; }
+    charges++; if(useKey) seenKey=true;
+  }
+  function restart(){               // a new worker replays the history from the top
+    cursor=history.length;
+    logs.unshift('↻ new worker replays '+history.length+' recorded step'+(history.length===1?'':'s')+' ('+(history.join(', ')||'none')+') without running them');
+  }
+  document.getElementById('dx-step').onclick=function(){
+    if(history.length>=STEPS.length){ paint('Workflow already finished. Reset to run it again.','warn'); return; }
+    var name=STEPS[history.length]; effect(name); history.push(name); cursor=history.length;
+    logs.unshift('ran "'+name+'" and recorded its result');
+    paint(history.length===STEPS.length?'Workflow complete with <b>'+charges+'</b> charge'+(charges===1?'':'s')+'.':'Step <b>'+name+'</b> ran and its result is in the history.', charges>1?'bad':'ok');
+  };
+  document.getElementById('dx-crash').onclick=function(){
+    logs.unshift('💥 worker died'); restart();
+    paint('Restarted. Recorded steps were <b>replayed from the history</b>; the provider was not called.','ok');
+  };
+  document.getElementById('dx-gap').onclick=function(){
+    if(history.length>0){ paint('The gap demo needs a fresh workflow: reset first, then crash in the gap before any step.','warn'); return; }
+    effect('charge'); logs.unshift('💥 worker died after charging, before recording "charge"'); restart();
+    effect('charge'); history.push('charge'); cursor=1; logs.unshift('new worker found no record of "charge" and ran it again');
+    paint(charges>1?'The step ran twice and the customer was <b>charged twice</b>. Turn the key on and retry.':'The step ran twice, but the provider <b>deduped it on the idempotency key</b>.', charges>1?'bad':'ok');
+  };
+  document.getElementById('dx-key').onclick=function(){ useKey=!useKey; paint('Idempotency key '+(useKey?'on: retries of a step are deduped downstream.':'off: a retried step repeats its side effect.'),'warn'); };
+  document.getElementById('dx-reset').onclick=function(){ reset(); paint('Reset. Workflow order-1001: charge → reserve → ship.','warn'); };
+  reset(); paint('Workflow order-1001: charge → reserve → ship. Run a step, crash, and watch the restart replay.','warn');
 })();
 </script>
 <script src="lab.js"></script>

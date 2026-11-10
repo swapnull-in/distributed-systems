@@ -46,6 +46,7 @@ then watch the fix hold.
 | `npm run phase11` | **HLC** — a hybrid logical clock: causal order + near-real timestamps, constant size | clocks/ordering |
 | `npm run phase12` | **Quorum** — R+W>N overlap and read-repair; when R+W≤N reads stale | consistency / CAP |
 | `npm run phase13` | **Bulkheads** — bulkheads & shuffle sharding shrink the blast radius | fault tolerance |
+| `npm run phase14` | **Durable execution** — the event history is the state: replay after a crash, at-least-once steps with idempotency keys, non-determinism on a code change *(Deep Dive 37)* | workflows |
 | `npm run capstone` | **Multi-region & static stability** — the fiber-cut drill with the capacity math | multi-region (L6) |
 
 Start by reading `src/phase1/write-skew.ts` and `src/phase3/raft.ts` — the whole
@@ -120,6 +121,7 @@ src/
   phase11/ hybrid logical clock (HLC)
   phase12/ quorum reads — R+W>N + read-repair
   phase13/ bulkheads & shuffle sharding (blast radius)
+  phase14/ durable execution (history + replay, idempotent steps)
   capstone/ multi-region static-stability fiber-cut drill
 web/
   index.html  ·  serve.mjs   (the interactive Failure Lab — npm run web)
