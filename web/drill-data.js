@@ -93,6 +93,16 @@ window.DRILL = {
       topic: "multi-region",
       q: "Why so much idle capacity across your regions?",
       a: "It isn't idle — it's the RTO insurance premium. N+1 sizing means each of 3 regions runs at 66% or less so any one region's death is absorbed by capacity that already exists; autoscaling is not a failover plan, because during a region loss it faces a cold-start stampede on the cloud's worst day. The headroom has a dollar figure attached to a written RTO: cut the headroom and you rewrite the RTO and tell the customers."
+    },
+    {
+      topic: "durable execution",
+      q: "A worker charges the card, then crashes before reserving inventory. Under durable execution, what happens on restart, and why isn't the card charged again?",
+      a: "Every step's result is appended to the workflow's <b>event history</b> before the workflow moves on. A new worker runs the workflow function <b>from the top</b>, but each step first checks the history: the charge has a recorded result, so it returns that and does not execute. Execution fast-forwards to the first step with no record (reserve) and real work resumes there. <b>The history is the state; replay is recovery.</b> The price is that workflow code must be deterministic, so clocks, randomness and I/O live in the steps, not in the workflow."
+    },
+    {
+      topic: "durable execution",
+      q: "Does a durable execution engine give you exactly-once steps? What do you have to build yourself?",
+      a: "No. A worker can complete the side effect and die <b>before the result is recorded</b>, and the step will run again: steps are <b>at-least-once</b>. You make them effectively-once with an <b>idempotency key derived from workflow ID + step name</b>, stable across attempts, that the downstream system dedupes on. The second thing you own is <b>versioning</b>: changing workflow code while executions are in flight makes replay diverge from the history (a non-determinism error), so new branches go behind a version marker or old executions stay pinned to old workers until they finish."
     }
   ]
 };
