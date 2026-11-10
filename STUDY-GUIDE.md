@@ -20,6 +20,7 @@ This repo is the runnable half of **Core Course / 02-distributed-systems.md** (p
 | 12 `quorum-read-repair.ts` | R+W>N overlap by pigeonhole; read-repair heals; R+W≤N reads stale | 02 §1.6 Quorum (R+W>N) | "Quorum gives overlap; I still need read-repair and a conflict-resolution rule." |
 | 13 `bulkheads.ts` | Shared pool vs bulkheads vs shuffle sharding — a poison tenant's blast radius, measured | 02 §5.3 Bulkheads | "Timeouts bound how long you wait, circuit breakers stop hammering the dead, bulkheads contain the blast radius." |
 | 14 `durable-execution.ts` | A workflow engine in 60 lines — history, replay, the record gap, non-determinism | Deep Dive 37 §1–3, §6 · Pattern 15 | "The history is the state; replay is recovery. Workflow code decides, steps do, and every step is at-least-once, so every step is idempotent." |
+| 15 `mutual-match.ts` | Every interleaving of two likes, under per-direction rows vs one pair row | Core 54 §4 · Pattern 14 | "Two independent writes plus a read can't decide a two-party agreement; the read races the other write. Put both decisions in one row keyed by the unordered pair." |
 | Capstone `multi-region.ts` | The fiber-cut drill: 66% vs 90% utilization decides whether a region loss is a non-event | 02b §2 write ladder + §4 Static Stability | "Static stability means the failover consumes only decisions and capacity provisioned before the failure." |
 
 ## Go deeper
@@ -28,6 +29,7 @@ This repo is the runnable half of **Core Course / 02-distributed-systems.md** (p
 - **[Deep Dives/14-pattern-contention.md](https://github.com/swapnull-in/system-design/blob/main/Deep%20Dives/14-pattern-contention.md)** — phase 1's write skew and phase 4's locks generalized: who wins when many writers want one row/slot.
 - **[Deep Dives/15-pattern-multi-step-processes.md](https://github.com/swapnull-in/system-design/blob/main/Deep%20Dives/15-pattern-multi-step-processes.md)** — phase 5 and 10 at design-round scale: sagas, pivots, and workflow engines for multi-step flows.
 - **[Deep Dives/37-temporal-durable-execution.md](https://github.com/swapnull-in/system-design/blob/main/Deep%20Dives/37-temporal-durable-execution.md)** — what a real engine adds to phase 14: activity timeouts and heartbeats, signals and durable timers, continue-as-new, and versioning for code changes.
+- **[Core Course/54-design-tinder.md](https://github.com/swapnull-in/system-design/blob/main/Core%20Course/54-design-tinder.md)** — the design phase 15 comes from: the pair row, precomputed recommendation stacks, Bloom-filter seen-filtering and location privacy.
 - **DDIA ch. 5 (06-replication.md)** — the full replication story behind phases 9 and 12: leaders, lag, quorum edge cases.
 - **DDIA ch. 7 (08-transactions.md)** — isolation levels and write skew (phase 1) with the SSI internals the module summarizes.
 - **DDIA ch. 9 (10-consistency-and-consensus.md)** — linearizability, causality, and consensus (phases 2, 3, 8, 11) from first principles.

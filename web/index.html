@@ -484,6 +484,34 @@
       </div></div>
     </section>
 
+    <section class="phase" data-tab="15 · Mutual Match">
+      <h2>Mutual match — two parties, one agreement</h2>
+      <p class="lede">Alice likes Bob and Bob likes Alice at the same moment. With <strong>one row per direction</strong>,
+        each side writes its like and then checks for the other's: depending on timing you get no match or two.
+        With <strong>one row per pair</strong>, both likes update the same row, so the second one always sees the first.
+        <em>(Core 54 · <code>npm run phase15</code>)</em></p>
+      <div class="card"><div class="lab">
+        <div class="controls">
+          <button class="act" id="mm-both">⚡ Both swipe right at once</button>
+          <button class="ghost" id="mm-timing">Timing: checks before writes land</button>
+          <button class="ghost" id="mm-design">Design: one row per direction</button>
+          <button class="ghost" id="mm-reset">↺ Reset</button>
+          <div class="verdict" id="mm-verdict"><span class="dot"></span><span id="mm-vtext">Pick a timing and a design, then let both swipe. The right answer is exactly one match.</span></div>
+        </div>
+        <div class="stage">
+          <div style="display:flex;gap:18px;font-family:var(--mono)">
+            <div><div style="font-size:24px" id="mm-count">—</div><div style="font-size:10px;color:var(--muted)">MATCHES CREATED</div></div>
+            <div><div style="font-size:24px" id="mm-a">no</div><div style="font-size:10px;color:var(--muted)">ALICE → BOB</div></div>
+            <div><div style="font-size:24px" id="mm-b">no</div><div style="font-size:10px;color:var(--muted)">BOB → ALICE</div></div>
+          </div>
+          <div class="log-list" id="mm-log" style="font-family:var(--mono);font-size:12px;line-height:1.7">—</div>
+          <p class="proof"><b>The proof:</b> per-direction rows give <b>0</b> matches when both checks run early and
+            <b>2</b> when both run late. The pair row gives <b>1</b> under either timing, because the two updates are
+            serialized on one row and the match is created only if <code>matchedAt</code> is still empty.</p>
+        </div>
+      </div></div>
+    </section>
+
     <!-- 6 · RETRY STORM -->
     <section class="phase" data-tab="6 · Retry Storm">
       <h2>Retry storm → metastable failure</h2>
@@ -633,7 +661,7 @@ const TIER_OF = {
   'overview':'Overview',
   '1-write-skew':'Consistency', '2-cap-pacelc':'Consistency', '9-session-guarantees':'Consistency', '12-quorum':'Consistency',
   '3-split-brain':'Consensus & locks', '4-fencing':'Consensus & locks',
-  '5-2pc-vs-saga':'Transactions', '10-outbox':'Transactions', '14-durable-execution':'Transactions',
+  '5-2pc-vs-saga':'Transactions', '10-outbox':'Transactions', '14-durable-execution':'Transactions', '15-mutual-match':'Transactions',
   '6-retry-storm':'Fault tolerance', '13-bulkheads':'Fault tolerance',
   '7-crdt-vs-lww':'Conflict & clocks', '8-clocks':'Conflict & clocks', '11-hlc':'Conflict & clocks',
   'static-stability':'Multi-region',
@@ -1020,6 +1048,36 @@ function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.im
   document.getElementById('dx-key').onclick=function(){ useKey=!useKey; paint('Idempotency key '+(useKey?'on: retries of a step are deduped downstream.':'off: a retried step repeats its side effect.'),'warn'); };
   document.getElementById('dx-reset').onclick=function(){ reset(); paint('Reset. Workflow order-1001: charge → reserve → ship.','warn'); };
   reset(); paint('Workflow order-1001: charge → reserve → ship. Run a step, crash, and watch the restart replay.','warn');
+})();
+(function(){
+  var early=true, pair=false, logs=[];
+  function paint(count,msg,kind){
+    var c=document.getElementById('mm-count'); c.textContent=count===null?'—':count; c.style.color=count===null?'':(count===1?'var(--good)':'var(--bad)');
+    document.getElementById('mm-a').textContent=count===null?'no':'yes'; document.getElementById('mm-b').textContent=count===null?'no':'yes';
+    document.getElementById('mm-timing').textContent='Timing: '+(early?'checks before writes land':'checks after both writes');
+    document.getElementById('mm-design').textContent='Design: '+(pair?'one row per pair':'one row per direction');
+    document.getElementById('mm-log').innerHTML=logs.length?logs.join('<br>'):'—';
+    var v=document.getElementById('mm-verdict'); v.className='verdict '+(kind||'warn');
+    document.getElementById('mm-vtext').innerHTML=msg;
+  }
+  document.getElementById('mm-both').onclick=function(){
+    var matches=0;
+    if(pair){ var row={lo:false,hi:false,matchedAt:null};
+      ['lo','hi'].forEach(function(side,i){ row[side]=true; if(row.lo&&row.hi&&row.matchedAt===null){ row.matchedAt=i+1; matches++; } });
+      logs.unshift('pair row (alice|bob): update 1 sets its flag → update 2 sees it → matchedAt set once');
+      paint(matches,'The second update saw the first one\'s flag: <b>exactly one match</b>, whatever the timing.','ok');
+    } else if(early){
+      logs.unshift('A checks (bob→alice? no) · B checks (alice→bob? no) · both writes land afterwards');
+      paint(0,'Both checks ran before the other side\'s like was visible: <b>no match</b>, and nothing re-checks.','bad');
+    } else { matches=2;
+      logs.unshift('both writes land · A checks (bob→alice? yes) → match · B checks (alice→bob? yes) → match');
+      paint(2,'Both checks saw the other like, so both created a match: a <b>duplicate</b> and two notifications.','bad');
+    }
+  };
+  document.getElementById('mm-timing').onclick=function(){ early=!early; paint(null,'Timing changed. Let both swipe again.','warn'); };
+  document.getElementById('mm-design').onclick=function(){ pair=!pair; paint(null,'Design changed to <b>'+(pair?'one row per pair':'one row per direction')+'</b>. Let both swipe again.','warn'); };
+  document.getElementById('mm-reset').onclick=function(){ early=true; pair=false; logs=[]; paint(null,'Reset. The right answer is exactly one match.','warn'); };
+  paint(null,'Pick a timing and a design, then let both swipe. The right answer is exactly one match.','warn');
 })();
 </script>
 <script src="lab.js"></script>

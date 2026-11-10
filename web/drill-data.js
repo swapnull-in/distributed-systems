@@ -103,6 +103,16 @@ window.DRILL = {
       topic: "durable execution",
       q: "Does a durable execution engine give you exactly-once steps? What do you have to build yourself?",
       a: "No. A worker can complete the side effect and die <b>before the result is recorded</b>, and the step will run again: steps are <b>at-least-once</b>. You make them effectively-once with an <b>idempotency key derived from workflow ID + step name</b>, stable across attempts, that the downstream system dedupes on. The second thing you own is <b>versioning</b>: changing workflow code while executions are in flight makes replay diverge from the history (a non-determinism error), so new branches go behind a version marker or old executions stay pinned to old workers until they finish."
+    },
+    {
+      topic: "mutual match",
+      q: "Design match detection for a dating app: when two users like each other, create exactly one match. What is wrong with 'write my like, then check whether they liked me'?",
+      a: "The check <b>races the other user's write</b>. If both swipe at once and each check runs before the other like is visible (different rows, different partitions, or a lagging replica), both see nothing: <b>no match</b>, and nothing re-runs the check. If both writes land first, both checks succeed and you create <b>two matches</b>. Two independent writes plus a read cannot decide a two-party agreement."
+    },
+    {
+      topic: "mutual match",
+      q: "How do you fix it, and how do you guarantee the match event is published exactly once?",
+      a: "Store <b>one row per unordered pair</b>, keyed <code>(min(a,b), max(a,b))</code>, with a flag per direction. Each like is one atomic update that sets its own flag; the engine serializes the two updates, so the second <b>always sees the first</b>. Create the match with a conditional write (<code>matched_at IS NULL</code>) so retries and both-at-once cases yield one creator. Publish the match through an <b>outbox</b> written in the same update, so 'recorded' and 'announced' cannot diverge, and make the consumer idempotent on the pair key."
     }
   ]
 };
